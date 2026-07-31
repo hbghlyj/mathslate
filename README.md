@@ -25,7 +25,11 @@ Script blocks **keep the cursor**: after the first fill the block stays
 further character accumulates in the block — exactly the continuous input
 TeX's braces group. Only an explicit navigation command lets it out: `→`
 (or the `>` button) at the block's end, `Space`, `Enter`, `Esc`, or a
-click elsewhere on the slate. `←`/`→` (and the `<`/`>` buttons) step the
+click elsewhere on the slate. An arrow pressed while the fresh block is
+still EMPTY (armed box, nothing typed yet) steps straight back out and
+re-anchors the caret at the top level: `→` parks it right after the
+still-empty block (`e^` `→` `x` → `e^{}x`), `←` parks it before the
+block (`e^` `←` `x` → `xe^{}`). `←`/`→` (and the `<`/`>` buttons) step the
 caret **between the block's tokens** while it is locked; `Backspace`
 inside deletes the block's last token and collapses an emptied block back
 to its bare base. The `\` placeholder is a little three-state box of its own:
@@ -278,9 +282,11 @@ delete-a-selection, and no leakage from text fields — plus the caret
 lifecycle (blink animation, end and mid-slate anchoring, show/hide on
 selection and focus), the `<`/`>` navigation buttons and arrow-key stepping
 (edits land AT the caret), script-block retention with its four explicit
-exits, replace-on-selection typing, the Backspace-no-navigation audit, and
+exits (including the arrow over an armed-but-empty block: the caret
+re-anchors at top level, `e^` `→` `x` → `e^{}x`), replace-on-selection
+typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 60 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 61 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 

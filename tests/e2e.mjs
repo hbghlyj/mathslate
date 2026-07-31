@@ -1141,6 +1141,48 @@ await page.keyboard.type('x');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{bx}', null, { timeout: 20000 });
 console.log('    slate mousedown reclaimed DOM focus; typing continued in the slot →', JSON.stringify(await texNS()), '✓');
 
+console.log('61. → out of an armed-but-empty script block re-anchors the caret at top level');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('e');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e', null, { timeout: 20000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{}', null, { timeout: 30000 });
+// the fresh script box is armed: its selection, not the caret, marks the insertion point
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.waitForFunction(() => !document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
+// the bug: → dropped the armed box's selection but left the script state
+// "awaiting" — and an awaiting-unlocked script suppresses the caret (the
+// glowing box stands in for it), so the caret vanished for the rest of
+// the session even though typing kept appending at the top level
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() => !!document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
+console.log('    caret re-anchored at top level after → ✓');
+await page.keyboard.type('x');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{}x', null, { timeout: 20000 });
+await page.waitForFunction(() => !!document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
+console.log('    "x" continued at top level with a live caret →', JSON.stringify(await texNS()), '✓');
+// stepping out LEFT of the armed block parks the caret BEFORE it, alive
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('e^');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{}', null, { timeout: 30000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() => {
+    const c = document.querySelector('.mathslate-caret');
+    return c && c.style.position === 'absolute';
+}, null, { timeout: 15000 });
+await page.keyboard.type('x');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'xe^{}', null, { timeout: 20000 });
+await page.waitForFunction(() => {
+    const c = document.querySelector('.mathslate-caret');
+    return c && c.style.position === 'absolute';
+}, null, { timeout: 15000 });
+console.log('    ← parked before the block with a live caret; "x" landed before it →', JSON.stringify(await texNS()), '✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

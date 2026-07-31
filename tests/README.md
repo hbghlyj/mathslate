@@ -41,11 +41,16 @@ exponent: `\sqrt{b^{24}}`), and `→` peels exactly one slot level out
 (`\sqrt{b^{24}}` parks the caret after `b^{24}` *inside* the radical, so
 `-` yields `\sqrt{b^{24}-}`; the next `→` leaves to the slate — `←` peels
 leftwards the same way).
-The final step reloads the page and checks launch behaviour: the TeX
+Step 60 reloads the page and checks launch behaviour: the TeX
 tool's input must not hold DOM focus, `\sqrt` `Space` `b` typed with no
 click lands on the slate with the caret anchored inside the radical, and a
 slate mousedown reclaims DOM focus from the field again.
-60 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step checks that an arrow out of an ARMED-BUT-EMPTY script
+block (`e^` then `→`/←, before any fill) cancels the pending script and
+re-anchors the caret at the top level — after the block for `→` (`x`
+continues as `e^{}x`), before the block for `←` (`x` lands as `xe^{}`) —
+where the caret used to vanish for the rest of the session.
+61 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

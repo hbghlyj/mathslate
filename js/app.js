@@ -1164,6 +1164,22 @@
     // edge lets the cursor out — the block never loses it otherwise.
     function moveCaret(dir) {
         scrubSelection();
+        if (script.awaiting && !script.locked) {
+            // The fresh script box is armed (or still arming) but never
+            // filled — e.g. e^ then →: the press steps OUT of the empty
+            // block. exitScript cancels the pending script state too —
+            // without that the state stayed "awaiting" after the armed
+            // box lost its selection, and since an awaiting-unlocked
+            // script suppresses the caret (the glowing box stands in for
+            // it), the caret vanished for the rest of the session even
+            // though typing kept appending at the top level.
+            exitScript();
+            if (dir < 0) { // …before the block, if stepping out on the left
+                caret.gap = Math.max(0, modelBlocks - 1);
+                refreshCaret();
+            }
+            return;
+        }
         if (hasSlateSelection()) {
             deselectSlate();
             caretEnd();
