@@ -34,8 +34,18 @@ script block is locked opens the command box **inside** the block's slot
 (`e^i` `\` `pi` `Enter` → `e^{i\pi}`, typing continues inside), and filling
 a macro/toolbox structure's app-armed box (`\sqrt` `Enter` `12`) keeps the
 focus inside so digits accumulate (`\sqrt{12}`, `\frac{12}{}`) until an
-explicit exit.
-57 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+explicit exit. The last two steps pin the slot caret and nested
+navigation directly: after `\sqrt` `Space` `b^2` the blinking caret stays
+alive and anchored inside the superscript slot (typing continues in the
+exponent: `\sqrt{b^{24}}`), and `→` peels exactly one slot level out
+(`\sqrt{b^{24}}` parks the caret after `b^{24}` *inside* the radical, so
+`-` yields `\sqrt{b^{24}-}`; the next `→` leaves to the slate — `←` peels
+leftwards the same way).
+The final step reloads the page and checks launch behaviour: the TeX
+tool's input must not hold DOM focus, `\sqrt` `Space` `b` typed with no
+click lands on the slate with the caret anchored inside the radical, and a
+slate mousedown reclaims DOM focus from the field again.
+60 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

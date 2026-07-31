@@ -33,7 +33,9 @@ NS.TeXTool = function(editorID, addMath) {
     }
     Y.one(editorID).appendChild(input);
     Y.one(editorID).appendChild(tool);
-    input.focus();
+    // Standalone app (documented patch): the TeX field does NOT take
+    // focus at construction — the workspace owns focus at launch, so
+    // the first keystrokes land on the slate, not in this input.
     var drag = new Y.DD.Drag({node: tool});
     drag.on('drag:end', function() {
         this.get('node').setStyle('top' , '0');

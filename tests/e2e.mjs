@@ -692,12 +692,14 @@ await page.waitForFunction(() => document.getElementById('current-tex').value.re
 await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
 await page.keyboard.type('1');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}', null, { timeout: 15000 });
-// Select the (now only) empty box — the denominator — and press backslash.
+// Select the empty denominator box (the LAST empty box: the filled
+// numerator keeps its own trailing box as the caret's socket) and press
+// backslash.
 await page.waitForTimeout(800);
 await page.evaluate(() => {
     const divs = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
         .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '');
-    const shim = [...document.querySelectorAll('span[id="' + divs[0].id + '"]')]
+    const shim = [...document.querySelectorAll('span[id="' + divs[divs.length - 1].id + '"]')]
         .find((n) => getComputedStyle(n).position === 'absolute');
     if (shim) shim.click();
 });
@@ -910,10 +912,20 @@ await page.waitForFunction(() => document.getElementById('current-tex').value.re
 await page.keyboard.type('x'); // and keeps accumulating there
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{5x}3}', null, { timeout: 20000 });
 console.log('    "5x" accumulated inside the new inner argument →', JSON.stringify(await texNS()), '✓');
-await page.keyboard.press('ArrowRight'); // past the inner slot's edge: step out to top level
+// → peels ONE nesting level at a time: out of the inner argument into the
+// outer superscript slot (parked right after the inner structure), past
+// the outer slot's end, then out to the top level.
+await page.keyboard.press('ArrowRight'); // out of the inner argument
+await page.keyboard.type('z'); // …lands in the OUTER slot, mid-position
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{5x}z3}', null, { timeout: 20000 });
+console.log('    → peeled into the outer slot; "z" went there mid-slot →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('Backspace');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{5x}3}', null, { timeout: 20000 });
+await page.keyboard.press('ArrowRight'); // caret to the outer slot's end
+await page.keyboard.press('ArrowRight'); // past that edge: out to top level
 await page.keyboard.type('q');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{5x}3}q', null, { timeout: 20000 });
-console.log('    → let the cursor out; "q" continues top-level →', JSON.stringify(await texNS()), '✓');
+console.log('    →×2 more peeled out; "q" continues top-level →', JSON.stringify(await texNS()), '✓');
 
 console.log('55. a trigger with the caret at the slot\'s END keeps the classic newest-wins wrap (1/2/3 nesting)');
 await page.click('#btn-clear-slate');
@@ -992,6 +1004,142 @@ await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .ma
 await page.keyboard.type('12');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{12}{}', null, { timeout: 20000 });
 console.log('    \\frac numerator digits stay inside too →', JSON.stringify(await texNS()), '✓');
+
+console.log('58. \\sqrt + Space + b^2: the caret stays VISIBLE inside the superscript slot');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('\\sqrt');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });
+await page.keyboard.press(' '); // Space, exactly as in the report
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 30000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('b');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 20000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() =>
+    document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{}}'
+    && !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 20000 });
+await page.keyboard.type('2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 20000 });
+// the bug: the caret vanished here. It must be alive, absolutely
+// positioned (anchored in the slot), inside the structure's extent.
+await page.waitForFunction(() => {
+    const c = document.querySelector('.mathslate-caret');
+    return c && c.style.position === 'absolute';
+}, null, { timeout: 15000 });
+const c58 = await page.evaluate(() => {
+    const caret = document.querySelector('.mathslate-caret');
+    const r = caret.getBoundingClientRect();
+    const root = document.querySelector('#mathslate-editor #canvas [id="' +
+        [...document.querySelectorAll('#mathslate-editor .mathslate-preview > div')].filter((d) => d.id)[0].id + '"]');
+    const rr = root.getBoundingClientRect();
+    return { blanks: [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+        .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').length,
+        inside: r.left >= rr.left - 2 && r.left <= rr.right + 2 && r.top >= rr.top - 6 && r.top <= rr.bottom + 6 };
+});
+console.log('    caret alive after 2, anchored inside the block ✓', JSON.stringify(c58));
+if (!c58.blanks || !c58.inside) { throw new Error('caret left the structure (the disappearing-caret bug)'); }
+await page.keyboard.type('4'); // keeps accumulating inside the exponent
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{24}}', null, { timeout: 20000 });
+console.log('    "4" accumulated in the exponent →', JSON.stringify(await texNS()), '✓');
+
+console.log('59. → peels exactly ONE nesting level out of a nested slot (\\sqrt{b^{24}} → caret stays in the radical; - lands inside)');
+await page.keyboard.press('ArrowRight'); // out of the superscript ONLY
+await page.waitForTimeout(600);
+await page.waitForFunction(() => {
+    const c = document.querySelector('.mathslate-caret');
+    return c && c.style.position === 'absolute'; // still anchored INSIDE the radical
+}, null, { timeout: 15000 });
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{24}}', null, { timeout: 20000 });
+console.log('    → left just the superscript; caret still anchored inside the radical ✓');
+await page.keyboard.type('-');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{24}-}', null, { timeout: 20000 });
+console.log('    "-" typed INSIDE the radical →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('ArrowLeft'); // caret steps left inside the radicand
+await page.keyboard.press('ArrowRight'); // and back to its end
+await page.keyboard.press('ArrowRight'); // past the radicand's edge: out to top level
+await page.waitForFunction(() => {
+    const c = document.querySelector('.mathslate-caret');
+    const canvas = document.querySelector('#mathslate-editor #canvas');
+    return c && canvas && canvas.lastElementChild === c && !c.style.position; // in-flow at the end
+}, null, { timeout: 15000 });
+console.log('    second → left the structure; caret parked at the slate end ✓');
+await page.keyboard.type('q');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{24}-}q', null, { timeout: 20000 });
+console.log('    "q" continued at top level →', JSON.stringify(await texNS()), '✓');
+// left-arrow peel: ← out of a nested argument parks the caret BEFORE the
+// structure inside the enclosing slot
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('\\sqrt');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 30000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('b');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 20000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() =>
+    document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{}}'
+    && !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 20000 });
+await page.keyboard.type('2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 20000 });
+await page.keyboard.press('ArrowLeft'); // caret before the 2, inside the argument
+await page.keyboard.press('ArrowLeft'); // past the argument's left edge: peel into the radicand, before b^2
+await page.keyboard.type('w');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{wb^2}', null, { timeout: 20000 });
+console.log('    ←×2 peeled leftwards into the radicand; "w" landed before b^2 →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('ArrowLeft'); // caret before the w, still in the radicand
+await page.keyboard.press('ArrowLeft'); // past the radicand's left edge: out to the slate, before the block
+await page.keyboard.type('v');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'v\\sqrt{wb^2}', null, { timeout: 20000 });
+console.log('    ←×2 more parked before the block at top level →', JSON.stringify(await texNS()), '✓');
+
+console.log('60. launch focus: the workspace owns the caret at boot; first keystrokes land on the slate');
+await page.reload({ waitUntil: 'domcontentloaded' });
+await page.waitForSelector('#mathslate-editor .yui3-tabview', { timeout: 90000 });
+await page.waitForFunction(
+    () => document.querySelectorAll('#mathslate-editor .yui3-tabview-panel .yui3-dd-draggable').length > 20,
+    null, { timeout: 90000 });
+// the bug: the TeX tool's input field grabbed launch focus
+await page.waitForFunction(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    return input && document.activeElement !== input;
+}, null, { timeout: 15000 });
+console.log('    TeX tool input does not hold launch focus ✓');
+// the report's sequence, typed with NO click anywhere
+await page.keyboard.type('\\sqrt');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });
+await page.keyboard.press(' ');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 30000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('b');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 20000 });
+// the caret must be alive inside the radical
+await page.waitForFunction(() => {
+    const c = document.querySelector('.mathslate-caret');
+    return c && c.style.position === 'absolute';
+}, null, { timeout: 15000 });
+console.log('    \\sqrt Space b typed end-to-end at launch; caret anchored inside the radical ✓');
+const leaked60 = await page.$eval('#mathslate-editor input[type="text"]', (el) => el.value);
+if (leaked60 !== '') { throw new Error('keystrokes leaked into the TeX tool input at launch: ' + JSON.stringify(leaked60)); }
+console.log('    TeX field stayed empty (keys never leaked into it) ✓');
+// a slate mousedown reclaims DOM focus from the field even on sticky browsers
+await page.click('#mathslate-editor input[type="text"]');
+await page.waitForFunction(() =>
+    document.activeElement === document.querySelector('#mathslate-editor input[type="text"]'), null, { timeout: 15000 });
+await page.evaluate(() => {
+    document.querySelector('#mathslate-editor #canvas')
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+});
+await page.waitForFunction(() =>
+    document.activeElement !== document.querySelector('#mathslate-editor input[type="text"]'), null, { timeout: 15000 });
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 10000 });
+await page.keyboard.type('x');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{bx}', null, { timeout: 20000 });
+console.log('    slate mousedown reclaimed DOM focus; typing continued in the slot →', JSON.stringify(await texNS()), '✓');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it

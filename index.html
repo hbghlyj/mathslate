@@ -112,8 +112,11 @@
            of the denominator; <kbd>^</kbd> <kbd>_</kbd> <kbd>/</kbd> wrap the token left of the
            caret there, and <kbd>Backspace</kbd> deletes inside it). Arrow keys first walk the caret
            between the slot's tokens &mdash; mid-slot <code>1^23</code> then <kbd>&larr;</kbd> then
-           <kbd>^</kbd> hatches on the <code>2</code> (<code>1^{2^{}3}</code>) &mdash; and only
-           stepping past an edge, <kbd>Esc</kbd>, or clicking elsewhere lets it out.
+           <kbd>^</kbd> hatches on the <code>2</code> (<code>1^{2^{}3}</code>) &mdash; the blinking
+           caret stays visible inside the slot, and stepping past an edge peels one level
+           out (<code>\sqrt{b^2}</code> then <kbd>&rarr;</kbd> keeps it inside the radical, so
+           <code>-4ac</code> continues there); <kbd>Esc</kbd> or clicking elsewhere lets it
+           out entirely.
            A <strong>blinking caret</strong> marks the end of the expression whenever nothing is
            selected &mdash; the next symbol or drop lands right before it &mdash; and typing with a
            symbol selected replaces it. A script block <strong>keeps the cursor</strong> for

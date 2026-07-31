@@ -72,10 +72,18 @@ and everything typed afterwards continues inside it —
   (`\\frac` `Enter` `1`, click the denominator, `\\beta` `Enter` `+` →
   `\\frac{1}{\\beta+}`, even when the `+` is typed the instant the
   conversion lands);
+- the **blinking caret stays visible inside the slot**, hugging the token
+  (or trailing box) at the intra-slot position — typing never leaves the
+  caret in limbo (`\\sqrt` `Space` `b^2` keeps the caret inside the
+  superscript, ready for more);
 - arrow keys first move an **intra-slot caret** between the slot's tokens:
   characters insert exactly at it and `Backspace` deletes the token to its
-  left; only stepping past an edge leaves the slot (the caret parks right
-  beside the structure);
+  left; stepping past an edge peels exactly **one nesting level** — a slot
+  inside another structure's slot hands the caret to the enclosing slot,
+  parked beside the structure it just left (`\\sqrt{b^{2|}}` →
+  `\\sqrt{b^2|}`, so `-` continues *inside* the radical: `\\sqrt{b^2-}`) —
+  and only a slot hanging directly off a top-level block releases the
+  caret to the slate beside that block;
 - `^`, `_`, `/` wrap the token **left of the intra-slot caret** into a
   script or fraction right there, the argument box arms, and input keeps
   accumulating inside the argument (`a` `^` `23` → `a^{23}` without leaving
@@ -88,10 +96,21 @@ and everything typed afterwards continues inside it —
 - exits are always explicit: `Esc`, an arrow step past an edge, or
   clicking other content.
 
+**Focus discipline.** The slate owns DOM focus from the moment the app
+opens (the TeX tool's field does not steal it), so typing starts working
+immediately with no click; and a click anywhere in the editor reclaims
+DOM focus from whatever form control held it (the TeX field, the document
+textarea — even on browsers that keep inputs focused across outside
+clicks), so keystrokes always follow the visible caret.
+
 The focus lives as a pure closure address (owning top-level block + JSON
-path into the slot's content array + intra-slot token index) — no DOM
-markers involved — so MathJax 4's asynchronous re-renders can never strand
-the cursor or bounce it out of the fraction. Structure boxes the app arms
+path into the slot's content array + intra-slot token index + the trailing
+box's pre-order blank index, the caret's DOM socket) — no DOM markers
+involved in routing — so MathJax 4's asynchronous re-renders can never
+strand the cursor or bounce it out of the fraction. The arming click that
+opens a fresh argument box now also holds the input queue until its
+selection marker actually lands, so even a zero-delay fast typist cannot
+have a fill splice into the wrong slot while the marker is in flight. Structure boxes the app arms
 *for you* (a macro-converted `\\sqrt`'s radicand, `\\frac`'s numerator)
 plant the slot focus on their first native fill, so continuation typing
 stays inside; only the script-trigger boxes (`^`/`_` at top level) keep
@@ -165,6 +184,7 @@ The editor core (`js/mathslate/*.js`, `css/styles.css`, `help.html`,
 | --- | --- |
 | `js/mathslate/editor.js` | Accepts the tool config as a JS object (`M.tinymce_mathslate.configJSON` from `js/config.js`) in addition to a URL fetched with `Y.io`. Enables `file://` use. |
 | `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. And for the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). |
+| `js/mathslate/textool.js` | The TeX tool's input no longer takes DOM focus at construction: the standalone app wants the *workspace* focused at launch, so the first keystrokes land on the slate (marked `Standalone app (documented patch)`). |
 | `plugin.js` / `mathslate.html` / `yui/build/*dialogue*` | **Dropped.** The TinyMCE plugin wrapper and Moodle dialogue module are replaced by `js/app.js`, which owns the "document" and the Insert/Copy/Clear actions that used to live on TinyMCE's dialogue buttons. |
 | `index.html`, `js/app.js`, `js/config.js`, `css/app.css`, `js/mathjax4-shim.js` | **New.** App shell, document model (source textarea + MathJax-rendered pane), clipboard/export helpers, keyboard entry of the literal character set, inlined config, and the MathJax v2-to-v4 API shim. |
 
@@ -260,7 +280,7 @@ selection and focus), the `<`/`>` navigation buttons and arrow-key stepping
 (edits land AT the caret), script-block retention with its four explicit
 exits, replace-on-selection typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 57 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 60 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 
