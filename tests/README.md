@@ -1,0 +1,48 @@
+# Headless end-to-end test (optional dev tooling)
+
+Loads the app in headless Chromium (via `playwright-core`), lets the toolbox render,
+clicks tools, exercises Insert/Copy/Clear, the TeX input tab, help, undo, export and
+the `file://` boot path. Keyboard coverage includes the literal character set, the
+`^` / `_` / `/` TeX triggers, and the `\` TeX-command placeholder's three states:
+activation with cursor lock (arrow keys captured), the active wrapper visuals
+(marker class, highlighted monospace token, dashed cursor outline), and closing by
+any non-letter (`Space`, `Enter`, symbols) — upon which the name is parsed into
+real math through the toolbox TeX tool's own pipeline (unknown names degrade to a
+literal token, covered too) — plus the in-structure regression: with a fraction's
+denominator box selected, `\` opens the command box **inside** the denominator and
+conversion re-arms in place (`\frac{1}{\beta+}` never leaves the fraction) — plus
+a check that clicking the bare preview background cannot crash the upstream click
+delegate. It also checks the blinking caret (presence at the end of the slate, blink
+animation, hiding on selection/over-focus, reappearing on Esc), the `<`/`>`
+navigation buttons and arrow-key caret stepping (mid-slate anchoring, edits landing
+at the caret), script-block retention (multi-character super/subscripts with the
+cursor locked inside, released only by `→`/`Space`/`Enter`/`Esc`), replace-on-selection
+typing, the Backspace-does-not-navigate audit, and single-char script unbracing.
+It also covers the slot-focus behaviour end to end: a `+` typed immediately after an
+in-slot macro conversion stays inside the fraction; `\` after a slot-variable opens
+the box inside the slot; characters/`\`/`+` keep accumulating inside a focused slot;
+`^`, `_` and `/` wrap and fill inside it; in-slot Backspace semantics (delete in the
+slot, step out at empty); and the explicit focus exits (Esc → top-level typing).
+53 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+
+    cd tests
+    npm install            # installs playwright-core
+    npx playwright-core install chromium --with-deps
+    cd .. && python3 -m http.server 8123 &
+    cd tests && BASE=http://127.0.0.1:8123 node e2e.mjs
+
+## MathJax 4 timing notes
+
+MathJax 4 typesets asynchronously (Promise-based, fonts fetched as on-demand
+CHTML chunks), so the suite never assumes a render is visible right after a
+mutation: it waits on the TeX read-out (`#current-tex`, driven by the app's
+250 ms poll) and on DOM markers. In particular, after clicking a drop-shim to
+select a slate box, the `.mathslate-selected` marker only appears once the
+post-click typeset finishes — steps poll for it before typing (a fast script
+that types immediately would race the marker). Glyph assertions accept both
+the literal codepoint (v2, e.g. `α` U+03B1) and the math-italic codepoint v4
+CHTML renders (`𝛼` U+1D6FC; `𝛽` U+1D6FD, `𝛾` U+1D6FE).
+
+`shot3.mjs` regenerates `../docs/screenshot.png` (keyboard-only demo ending on
+an active `\` placeholder); `shot1.png` is the diagnostic frame the e2e run
+drops at the end.

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<!--
+ * Mathslate — Standalone Math Editor
+ *
+ * The Mathslate drag-and-drop mathematics editor extracted from the
+ * TinyMCE 4 plugin (github.com/dthies/tinymce4-mathslate) so it runs
+ * as a self-contained application: no TinyMCE, no Moodle, no build step.
+ *
+ * Original editor: copyright 2013-2014 Daniel Thies, GPL v3 (see LICENSE).
+ * Standalone wrapper: same license.
+ -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mathslate — Standalone Math Editor</title>
+<link rel="icon" type="image/png" href="img/mathslate.png">
+
+<!--
+ * YUI's dynamic loader would normally fetch skin CSS through Yahoo's combo
+ * handler, which is gone; css fetching is disabled in YUI_config below and
+ * the needed stylesheets are linked by hand instead.
+-->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/tabview/assets/tabview-core.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/tabview/assets/skins/sam/tabview-skin.css">
+<link rel="stylesheet" href="css/styles.css"><!-- original Mathslate editor styles -->
+<link rel="stylesheet" href="css/app.css"><!-- standalone shell styles -->
+
+<!--
+ * MathJax 4 configuration (must be set BEFORE the component loads).
+ * The Mathslate core expects the old MathJax 2 defaults: \( \) and \[ \]
+ * delimiters, no auto page typeset (the v2 shim drives all typesetting),
+ * display math left-aligned like the MathJax 2.7 layout this UI was
+ * sized for.
+-->
+<script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['\\(', '\\)']],
+            displayMath: [['\\[', '\\]']],
+            processEscapes: true
+        },
+        options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code',
+                           'annotation', 'annotation-xml']
+        },
+        chtml: {
+            displayAlign: 'left',
+            displayIndent: '0'
+        },
+        startup: {
+            typeset: false
+        }
+    };
+</script>
+<!--
+ * MathJax 4 (TeX + MathML input, CHTML output; pinned build).
+ * Mathslate was written for MathJax 2.7 and speaks its v2 runtime API
+ * (MathJax.Hub & friends); js/mathjax4-shim.js implements that sliver of
+ * v2 API over the v4 component, so the upstream modules run untouched.
+-->
+<script src="https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-mml-chtml.js"></script>
+<script src="js/mathjax4-shim.js"></script>
+
+</head>
+<body class="yui3-skin-sam">
+
+<header class="app-header">
+    <img src="img/mathslate.png" alt="" class="app-logo">
+    <div>
+        <h1>Mathslate</h1>
+        <p class="subtitle">Standalone mathematics editor &mdash; drag &amp; drop symbols onto the slate,
+           then insert the result into your document as TeX.</p>
+    </div>
+</header>
+
+<main>
+    <section class="card">
+        <h2 class="card-title">1 · Build an equation</h2>
+        <p class="card-hint">Click a symbol in the toolbox (or drag it onto the slate). Click a piece of the
+           expression to select it, then click-or-drop onto another piece to insert inside it.
+           The <em>T<sub>E</sub>X</em> tab lets you type TeX directly. <strong>Keyboard:</strong> type
+           letters, digits and <code>+ &minus; * = ( ) [ ] &lt; &gt; , ; : ! ? | . '</code> straight into
+           the slate. TeX triggers work like in TeX &mdash; <kbd>^</kbd> and <kbd>_</kbd> attach a
+           super/subscript to the preceding token (<code>x^2</code> &rarr; <em>x&sup2;</em>,
+           <code>a_b</code> &rarr; <em>a&#8339;</em>), <kbd>/</kbd> turns it into a fraction
+           (<code>a/b</code> &rarr; stacked <em>a/b</em>), and <kbd>\</kbd> opens an active TeX-command placeholder
+           (highlighted box, dashed cursor &mdash; e.g. <code>\alpha</code>): letters accumulate in monospace,
+           the cursor is locked inside (arrow keys don't navigate away) and any non-letter
+           &mdash; digit, symbol, <kbd>Space</kbd>, <kbd>Enter</kbd>, <kbd>Esc</kbd> &mdash; closes the box;
+           the command is compiled by the TeX tool into real math on the slate (argument commands like
+           <code>\frac</code> or <code>\sqrt</code> open as a live structure block with the first box
+           selected; unknown names stay literal text), and the closing key types after it.
+           Clicking a fill-box inside a structure &mdash; e.g. the empty denominator of a
+           fraction &mdash; <strong>keeps the caret in that slot</strong>: everything typed continues
+           inside it (<kbd>\</kbd> opens the command box there, so <code>\beta</code> becomes part
+           of the denominator; <kbd>^</kbd> <kbd>_</kbd> <kbd>/</kbd> wrap there too, and
+           <kbd>Backspace</kbd> deletes inside it), until <kbd>Esc</kbd> or an arrow steps out.
+           A <strong>blinking caret</strong> marks the end of the expression whenever nothing is
+           selected &mdash; the next symbol or drop lands right before it &mdash; and typing with a
+           symbol selected replaces it. A script block <strong>keeps the cursor</strong> for
+           continuous input (<code>a^23</code> &rarr; <code>a^{23}</code>): only <kbd>&rarr;</kbd>,
+           <kbd>Space</kbd>, <kbd>Enter</kbd> or <kbd>Esc</kbd> lets it out. The <code>&lt;</code>/<code>&gt;</code>
+           buttons (and arrow keys) move the blinking caret between blocks &mdash; typing and
+           <kbd>Backspace</kbd> act at the caret. Single-character script arguments and single-character
+           bases output without braces (<code>a^2</code>, not <code>{a}^{2}</code>).</p>
+
+        <!-- The Mathslate editor mounts here (replaces the loading notice) -->
+        <div id="mathslate-editor" class="mathslate-tinymce">
+            <div class="loading-notice">Loading the Mathslate editor&hellip;</div>
+        </div>
+
+        <div class="action-bar">
+            <label class="tex-label" for="current-tex">TeX</label>
+            <input id="current-tex" type="text" readonly placeholder="(the equation you build appears here as TeX)">
+            <button id="btn-nav-left"  class="btn caret-nav" title="Move the cursor one position to the left">&lt;</button>
+            <button id="btn-nav-right" class="btn caret-nav" title="Move the cursor one position to the right">&gt;</button>
+            <button id="btn-insert-inline"  class="btn primary" title="Insert \( ... \) into the document">Insert inline</button>
+            <button id="btn-insert-display" class="btn primary" title="Insert \[ ... \] into the document">Insert display</button>
+            <button id="btn-copy-tex"       class="btn" title="Copy the TeX to the clipboard">Copy TeX</button>
+            <button id="btn-clear-slate"    class="btn danger" title="Empty the slate">Clear slate</button>
+        </div>
+        <div id="status-line" class="status-line" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">2 · Your document</h2>
+        <p class="card-hint">Inserted math appears at the caret in the source below. You can also type your own text
+           there, with <code>\(...\)</code> for inline math and <code>\[...\]</code> for display math.</p>
+        <div class="doc-cols">
+            <div class="doc-col">
+                <h3 class="pane-title">Rendered document</h3>
+                <div id="document-area" class="document-area"></div>
+            </div>
+            <div class="doc-col">
+                <h3 class="pane-title">Document source (text + TeX)</h3>
+                <textarea id="document-source" class="document-source" spellcheck="false"
+                    placeholder="Type here, e.g.&#10;The quadratic formula \(x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}\) solves ax^2+bx+c=0."></textarea>
+            </div>
+        </div>
+        <div class="action-bar">
+            <button id="btn-export" class="btn" title="Download the document as a stand-alone HTML file">Export HTML</button>
+            <button id="btn-clear-doc" class="btn danger" title="Empty the document">Clear document</button>
+        </div>
+    </section>
+</main>
+
+<footer class="app-footer">
+    <p>Mathslate &copy; 2013&ndash;2014 Daniel Thies, extracted from the
+       <a href="https://github.com/dthies/tinymce4-mathslate">tinymce4-mathslate</a> TinyMCE 4 plugin.
+       Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL v3</a>.
+       Runs on <a href="https://clarle.github.io/yui3/">YUI 3.18</a> and
+       <a href="https://www.mathjax.org/">MathJax 4.1</a> (via jsDelivr).</p>
+</footer>
+
+<!-- Moodle compatibility shims the editor expects (replacing what Moodle/TinyMCE provided) -->
+<script>
+    if (typeof M === "undefined") M = {};
+    M.util = M.util || {};
+    M.util.image_url = M.util.image_url || function (image) { return './img/' + image + '.png'; };
+    M.tinymce_mathslate = M.tinymce_mathslate || {};
+    M.tinymce_mathslate.config = "config.json"; // used only if js/config.js is absent
+    M.tinymce_mathslate.help = "help.html";
+</script>
+
+<!--
+ * YUI seed. Yahoo's original CDN is defunct, so point the loader at cdnjs.
+ * cdnjs has no combo handler: combine is disabled (plain per-module requests)
+ * and widget CSS is linked manually in <head> (fetchCSS: false).
+-->
+<script>
+    window.YUI_config = {
+        base: 'https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/',
+        combine: false,
+        fetchCSS: false,
+        lang: 'en'
+    };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/yui/yui-min.js"></script>
+
+<!-- Mathslate core: Moodle string shim, inlined tool config, the four YUI modules -->
+<script src="js/strings.js"></script>
+<script src="js/config.js"></script>
+<script src="js/mathslate/snippeteditor.js"></script>
+<script src="js/mathslate/mathjaxeditor.js"></script>
+<script src="js/mathslate/editor.js"></script>
+<script src="js/mathslate/textool.js"></script>
+
+<!-- Standalone application glue (replaces plugin.js + the TinyMCE dialogue) -->
+<script src="js/app.js"></script>
+</body>
+</html>

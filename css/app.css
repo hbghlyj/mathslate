@@ -1,0 +1,319 @@
+/*
+ * app.css — shell styles for the standalone Mathslate app.
+ * The editor's internal styles live in css/styles.css (original file,
+ * scoped under .mathslate-tinymce); this file only styles the chrome
+ * around it: header, cards, action bar and the two-pane document view.
+ */
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    background: #e9edf2;
+    color: #222;
+}
+
+.loading-notice {
+    padding: 24px;
+    text-align: center;
+    color: #888;
+}
+
+/* ---------- header ---------- */
+
+.app-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 28px;
+    background: linear-gradient(135deg, #273043 0%, #3b4a6b 100%);
+    color: #fff;
+}
+
+.app-logo {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+    background: #fff;
+    padding: 6px;
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 24px;
+    letter-spacing: 0.02em;
+}
+
+.subtitle {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: #c6d0e4;
+}
+
+/* ---------- layout cards ---------- */
+
+main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #d4dae3;
+    border-radius: 10px;
+    padding: 16px 20px 20px;
+    margin-bottom: 22px;
+    box-shadow: 0 1px 3px rgba(20, 30, 50, 0.08);
+}
+
+.card-title {
+    margin: 0 0 4px;
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #3b4a6b;
+}
+
+.card-hint {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #68758c;
+}
+
+.card-hint code {
+    background: #eef1f6;
+    padding: 0 4px;
+    border-radius: 3px;
+}
+
+/* The Mathslate editor keeps its original internal look */
+#mathslate-editor {
+    width: 100%;
+    min-height: 240px;
+}
+
+/* ---------- action bar ---------- */
+
+.action-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.tex-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #3b4a6b;
+}
+
+#current-tex {
+    flex: 1 1 180px;
+    min-width: 120px;
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    padding: 7px 10px;
+    border: 1px solid #c8d0dc;
+    border-radius: 6px;
+    background: #f6f8fb;
+    color: #333;
+}
+
+.btn {
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid #b9c2d1;
+    background: #f2f4f8;
+    color: #273043;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:hover { background: #e4e9f2; border-color: #9aa7bd; }
+.btn:active { transform: translateY(1px); }
+
+.btn.primary {
+    background: #3b4a6b;
+    border-color: #3b4a6b;
+    color: #fff;
+}
+.btn.primary:hover { background: #2e3a55; }
+
+.btn.danger { color: #a3273c; }
+.btn.danger:hover { background: #f8e9ec; border-color: #d39aa5; }
+
+.status-line {
+    min-height: 18px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #2e7d32;
+}
+
+.status-line.flash { animation: fade-status 2.6s forwards; }
+
+@keyframes fade-status {
+    0%, 70% { opacity: 1; }
+    100%    { opacity: 0; }
+}
+
+/* ---------- document panes ---------- */
+
+.doc-cols {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.doc-col {
+    flex: 1 1 300px;
+    min-width: 0;
+}
+
+.pane-title {
+    margin: 0 0 6px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #68758c;
+}
+
+.document-area,
+.document-source {
+    width: 100%;
+    min-height: 220px;
+    border: 1px solid #c8d0dc;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.document-area {
+    background: #fff;
+    overflow-x: auto;
+}
+
+.document-area .doc-placeholder { color: #aab4c4; }
+
+.document-source {
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    background: #fafbfe;
+    resize: vertical;
+}
+
+/* ---------- footer ---------- */
+
+.app-footer {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 16px 30px;
+    font-size: 12px;
+    color: #68758c;
+}
+
+.app-footer a { color: #3b4a6b; }
+
+/* ---------- TeX-command placeholder (the "\" key): active-box chrome ----------
+ *
+ * While the macro box is open, #mathslate-editor carries the
+ * .mathslate-macro-active marker class (toggled by js/app.js). That is the
+ * distinct "active/selected" visual wrapper for the accumulation phase:
+ * the slate glow shows input is locked into the box, and the cursor box
+ * itself keeps a dashed outline while selected. The macro text inside the
+ * placeholder is highlighted in the model (mathbackground on the mtext).
+ * All of it disappears when the box closes: the class is removed and the
+ * placeholder is replaced by the finished, unhighlighted macro token.
+ */
+#mathslate-editor.mathslate-macro-active .mathslate-workspace {
+    box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.45);
+}
+
+#mathslate-editor.mathslate-macro-active .mathslate-workspace .mathslate-selected {
+    color: #bfe0ff;
+    background: rgba(77, 163, 255, 0.16);
+    border-radius: 2px;
+    outline: 2px dashed #4da3ff;
+    outline-offset: 1px;
+}
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 640px) {
+    .app-header { padding: 12px 16px; }
+    .doc-cols { flex-direction: column; }
+}
+
+/* ---------- simulated end-of-input caret ----------
+ * The blinking caret span parked at the end of the slate's math (see
+ * refreshCaret in js/app.js). pointer-events: none lets drops fall through
+ * onto the canvas, whose drop:hit handler appends at the caret's position;
+ * .mathslate-caret-hot glows while a drag hovers that drop zone.
+ */
+#mathslate-editor .mathslate-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.15em;
+    margin-left: 2px;
+    background: #7ec4ff;
+    vertical-align: middle;
+    border-radius: 1px;
+    pointer-events: none;
+    animation: mathslate-caret-blink 1.06s steps(1) infinite;
+}
+
+#mathslate-editor .mathslate-caret-hot {
+    background: #a8d8ff;
+    box-shadow: 0 0 6px 2px rgba(126, 196, 255, 0.8);
+}
+
+@keyframes mathslate-caret-blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+}
+
+/* ---------- script-block retention (the ^/_// lock) ----------
+ * While a script block owns the cursor, #mathslate-editor carries the
+ * .mathslate-script-active marker class (toggled by js/app.js): the slate
+ * glow shows input is locked into the block; the blinking caret is itself
+ * anchored inside the block, next to the block's last token.
+ */
+#mathslate-editor.mathslate-script-active .mathslate-workspace {
+    box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.55), 0 0 14px rgba(74, 222, 128, 0.3);
+}
+
+/* The fake caret also renders OUTSIDE the editor host when it is anchored
+ * beside a live drop-shim (its offset parent may be <body>) — keep its look
+ * identical there. */
+.mathslate-caret {
+    display: inline-block;
+    width: 2px;
+    background: #7ec4ff;
+    border-radius: 1px;
+    pointer-events: none;
+    animation: mathslate-caret-blink 1.06s steps(1) infinite;
+}
+
+/* < and > caret-navigation buttons */
+.caret-nav {
+    min-width: 2.4em;
+    padding-left: 10px;
+    padding-right: 10px;
+    font-weight: 700;
+}
+
+/* ---------- MathJax 4 (CHTML custom-element output) ----------
+ * MathJax 4's mjx-container is focusable (tabindex="0"); inside the
+ * editor every slate click would draw the browser's focus ring — pure
+ * visual noise here. */
+.mathslate-tinymce mjx-container {
+    outline: none;
+}
