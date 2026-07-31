@@ -47,8 +47,10 @@ to its bare base. The `\` placeholder is a little three-state box of its own:
    take arguments — `\frac`, `\dfrac`, `\tfrac`, `\binom`, `\sqrt` —
    open as a **live structure block** instead: the toolbox template with
    empty boxes (e.g. a fraction with numerator + denominator), the first
-   box pre-selected so typing fills it right away — one token per box, as
-   with the toolbox; click the other box to fill it. The closing
+   box pre-selected so typing fills it right away — and the slot focus
+   keeps the caret inside, so digits accumulate (`\\sqrt` `Enter` `12` →
+   `\\sqrt{12}`); click another box to fill it, or step out with an
+   arrow. The closing
    character is processed strictly after the conversion: `\alpha^2` ends
    as α² stacked (`{\alpha}^{2}`), and `\frac` + `Enter` + `12` + click
    + `3` gives `\frac{12}{3}`. The converted node's TeX is wrapped
@@ -89,10 +91,12 @@ and everything typed afterwards continues inside it —
 The focus lives as a pure closure address (owning top-level block + JSON
 path into the slot's content array + intra-slot token index) — no DOM
 markers involved — so MathJax 4's asynchronous re-renders can never strand
-the cursor or bounce it out of the fraction. Boxes that the app arms *for you* (a fresh
-structure's first box, the script box after `^`/`_` at top level, macro
-conversions) keep the classic one-token-per-box behaviour: after such a
-fill, typing continues after the block.
+the cursor or bounce it out of the fraction. Structure boxes the app arms
+*for you* (a macro-converted `\\sqrt`'s radicand, `\\frac`'s numerator)
+plant the slot focus on their first native fill, so continuation typing
+stays inside; only the script-trigger boxes (`^`/`_` at top level) keep
+the classic one-token-per-box release (their own lock machinery owns
+accumulation there).
 
 **The blinking caret.** Whenever nothing on the slate is selected and the
 editor has focus, a blinking caret marks the insertion point. It parks at
@@ -256,7 +260,7 @@ selection and focus), the `<`/`>` navigation buttons and arrow-key stepping
 (edits land AT the caret), script-block retention with its four explicit
 exits, replace-on-selection typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 56 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 57 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 

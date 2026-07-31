@@ -428,14 +428,14 @@ await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .ma
 await page.waitForTimeout(700);
 const mml38 = await page.$eval('#mathslate-editor #canvas', (el) => el.innerHTML);
 console.log('    canvas has mfrac:', mml38.includes('mfrac'), '| status:', JSON.stringify((await page.$eval('#status-line', (el) => el.textContent)).slice(0, 50)));
-console.log('    typing fills the selected numerator (one token per box, as with the toolbox):');
+console.log('    typing fills the selected numerator and the focus stays inside the slot:');
 await page.keyboard.type('1');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}', null, { timeout: 15000 });
 console.log('    numerator took the token ✓ \frac{1}{}');
 await page.keyboard.type('2');
-// the filled box releases the cursor; the next char continues after the block
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}2', null, { timeout: 15000 });
-console.log('    next char continues after the filled box ✓ \frac{1}{}2 — click the denominator box, fill it');
+// a macro/toolbox structure's armed slot keeps the focus: digits accumulate inside
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{12}{}', null, { timeout: 15000 });
+console.log('    digits accumulate inside the numerator ✓ \frac{12}{} — click the denominator box, fill it');
 await page.evaluate(() => {
     const divs = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
         .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '');
@@ -448,8 +448,8 @@ await page.evaluate(() => {
 // it before typing, like every other shim-click step does.
 await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
 await page.keyboard.type('3');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{3}2', null, { timeout: 15000 });
-console.log('    denominator filled from the slate ✓ \frac{1}{3}2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{12}{3}', null, { timeout: 15000 });
+console.log('    denominator filled from the slate ✓ \frac{12}{3}');
 
 console.log('39. \\sqrt + Enter renders a root block; radicand takes the next chars');
 await page.click('#btn-clear-slate');
@@ -960,6 +960,38 @@ await page.waitForTimeout(400);
 await page.keyboard.type('q');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{i\\pix}q', null, { timeout: 20000 });
 console.log('    Esc out; "q" at top level →', JSON.stringify(await texNS()), '✓');
+
+console.log('57. filling a macro-structure\'s armed box plants the slot focus (\\sqrt 1 2 → \\sqrt{12})');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('\\sqrt');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 30000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('12'); // multi-digit radicand, never dropping out
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{12}', null, { timeout: 20000 });
+console.log('    digits accumulate inside the radicand →', JSON.stringify(await texNS()),
+    '| slate blocks:', await nonEmptyRows(), '(still 1 ✓)');
+await page.keyboard.type('x');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{12x}', null, { timeout: 20000 });
+console.log('    and keep going →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('ArrowRight'); // explicit exit
+await page.keyboard.type('q');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{12x}q', null, { timeout: 20000 });
+console.log('    → out; "q" at top level →', JSON.stringify(await texNS()), '✓');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('\\frac');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac', null, { timeout: 20000 });
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{}{}', null, { timeout: 30000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('12');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{12}{}', null, { timeout: 20000 });
+console.log('    \\frac numerator digits stay inside too →', JSON.stringify(await texNS()), '✓');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it

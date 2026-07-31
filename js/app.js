@@ -870,6 +870,26 @@
                         slotFocus.caretIdx = slotTokenIndices(fArr).length;
                     }
                     rebuildSlate(fitems); // heal regardless
+                } else if (fillSi !== -1 && !script.awaiting) {
+                    // An app-armed box outside a script lock is a
+                    // macro-converted or toolbox-inserted STRUCTURE slot
+                    // (\\sqrt's radicand, \\frac's numerator): the user
+                    // is clearly inside a structure — plant the durable
+                    // slot focus there, or the very next digit would drop
+                    // out after the block (\\sqrt 1 2 came out as
+                    // \\sqrt{1}2 instead of \\sqrt{12}). The filled box
+                    // itself is rekeyed away, so the slot is located by
+                    // the token just appended to it; plain end-of-slate
+                    // appends match nothing and keep the classic release.
+                    var pitems = topItems(); // destructive read, healed below
+                    var loc = locateSlotEndingWith(pitems, JSON.parse(json));
+                    if (loc) {
+                        slotFocus.active = true;
+                        slotFocus.top = loc.top;
+                        slotFocus.path = loc.path;
+                        slotFocus.caretIdx = slotTokenIndices(loc.arr).length;
+                    }
+                    rebuildSlate(pitems); // heal regardless
                 }
             } else {
                 modelBlocks++;
@@ -1415,6 +1435,29 @@
             }
         })(items);
         return result;
+    }
+
+    // {top, path, arr} of the LAST content array (document order) whose
+    // final element deep-equals node — i.e. the slot a token was just
+    // appended to. Top-level rows are not slots, so a plain end-of-slate
+    // fill never matches.
+    function locateSlotEndingWith(items, node) {
+        var want = JSON.stringify(node), found = null;
+        items.forEach(function (root, t) {
+            if (typeof root === 'string' || !Array.isArray(root)) { return; }
+            (function scan(arr, path) {
+                for (var i = 0; i < arr.length; i++) {
+                    var c = arr[i];
+                    if (Array.isArray(c)) {
+                        if (c.length && JSON.stringify(c[c.length - 1]) === want) {
+                            found = {top: t, path: path.concat([i]), arr: c};
+                        }
+                        scan(c, path.concat([i]));
+                    }
+                }
+            })(root, []);
+        });
+        return found;
     }
 
     // A slot's trailing box shows up in cleaned JSON in two forms: the bare
