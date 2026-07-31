@@ -29,7 +29,10 @@ mid-slot inside a locked script block hatches ON the token left of the caret
 (`1^23` `←` `^` → `1^{2^{}3}`, typing keeps accumulating in the fresh inner
 argument) while a trigger at the slot's end keeps the newest-wins whole-block
 nesting (`1/2/3` → `\frac{\frac{1}{2}}{3}`).
-55 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+and a `\` pressed while a
+script block is locked opens the command box **inside** the block's slot
+(`e^i` `\` `pi` `Enter` → `e^{i\pi}`, typing continues inside).
+56 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

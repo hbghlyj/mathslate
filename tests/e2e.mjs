@@ -931,6 +931,36 @@ await page.keyboard.type('3');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{\\frac{1}{2}}{3}', null, { timeout: 20000 });
 console.log('    end-of-slot / nested TeX-style →', JSON.stringify(await texNS()), '✓');
 
+console.log('56. \\ pressed INSIDE a locked script block opens the command box in the slot (e^i\\pi)');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('e');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e', null, { timeout: 20000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{}', null, { timeout: 20000 });
+await page.keyboard.type('i');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^i', null, { timeout: 20000 });
+await page.keyboard.type('\\'); // must NOT exit the superscript
+await page.waitForFunction(() =>
+    document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{i\\}'
+    && document.getElementById('mathslate-editor').classList.contains('mathslate-macro-active'), null, { timeout: 20000 });
+console.log('    \\ opened INSIDE the superscript →', JSON.stringify(await texNS()),
+    '| slate blocks:', await nonEmptyRows(), '(still 1 ✓)');
+await page.keyboard.type('pi');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{i\\pi}', null, { timeout: 20000 });
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{i\\pi}', null, { timeout: 30000 });
+console.log('    converted in-slot →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.type('x'); // still inside the slot after conversion
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{i\\pix}', null, { timeout: 20000 });
+console.log('    "x" continued inside →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('Escape'); // explicit exit → top level
+await page.waitForTimeout(400);
+await page.keyboard.type('q');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'e^{i\\pix}q', null, { timeout: 20000 });
+console.log('    Esc out; "q" at top level →', JSON.stringify(await texNS()), '✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

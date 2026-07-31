@@ -524,6 +524,22 @@
                 return;
             }
             inputQueue.shift();
+            // \\ pressed while the caret sits INSIDE a locked script block
+            // (e^i, then \\): the command box belongs INSIDE the block's
+            // slot (→ e^{i\\pi}), not at the top level. Hand the block's
+            // slot to the slot-focus machinery exactly like the ^ _ /
+            // mid-slot triggers do.
+            if (script.awaiting && script.locked && script.slot.length) {
+                var lockGapM = scriptGap(); // cancelScript resets the slot
+                cancelScript();
+                slotFocus.active = true;
+                slotFocus.top = modelBlocks - 1; // a locked block is last
+                slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → content
+                slotFocus.caretIdx = lockGapM;
+                startMacroAtFocus();
+                pumpInput();
+                return;
+            }
             if (script.awaiting) { cancelScript(); } // adjacent triggers: newest wins
             startMacro(); // state-machine driven, never blocks the pump
             pumpInput();

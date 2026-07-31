@@ -63,7 +63,9 @@ a persistent **slot focus**: filling the box keeps the caret in that slot,
 and everything typed afterwards continues inside it —
 
 - `\\` opens the command box **inside the slot** (`b` then `\\beta` →
-  `b\\beta` — previously the backslash silently exited the fraction);
+  `b\\beta` — previously the backslash silently exited the fraction). The
+  same holds while a top-level script block is locked: `e^i` then `\\` opens
+  the box inside the superscript (`e^{i\\pi}`);
 - plain characters and delimiters like `+` continue at the slot's end
   (`\\frac` `Enter` `1`, click the denominator, `\\beta` `Enter` `+` →
   `\\frac{1}{\\beta+}`, even when the `+` is typed the instant the
@@ -254,7 +256,7 @@ selection and focus), the `<`/`>` navigation buttons and arrow-key stepping
 (edits land AT the caret), script-block retention with its four explicit
 exits, replace-on-selection typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 55 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 56 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 
