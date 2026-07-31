@@ -23,13 +23,26 @@ in-slot macro conversion stays inside the fraction; `\` after a slot-variable op
 the box inside the slot; characters/`\`/`+` keep accumulating inside a focused slot;
 `^`, `_` and `/` wrap and fill inside it; in-slot Backspace semantics (delete in the
 slot, step out at empty); and the explicit focus exits (Esc → top-level typing).
-53 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+It also covers the intra-slot caret: arrows walk between a focused/locked slot's
+tokens (chars insert at the caret, Backspace deletes left of it), and a `^` pressed
+mid-slot inside a locked script block hatches ON the token left of the caret
+(`1^23` `←` `^` → `1^{2^{}3}`, typing keeps accumulating in the fresh inner
+argument) while a trigger at the slot's end keeps the newest-wins whole-block
+nesting (`1/2/3` → `\frac{\frac{1}{2}}{3}`).
+55 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
-    npm install            # installs playwright-core
+    npm install            # installs playwright-core + @sparticuz/chromium
     npx playwright-core install chromium --with-deps
     cd .. && python3 -m http.server 8123 &
     cd tests && BASE=http://127.0.0.1:8123 node e2e.mjs
+
+`launch.mjs` (shared by `e2e.mjs`, `shot2.mjs`, `shot3.mjs`) launches a
+Playwright-managed chromium when present and otherwise falls back to the
+`@sparticuz/chromium` npm binary — with its bundled Amazon-Linux shared
+libs extracted on demand — for sandboxes where the Playwright browser CDN
+is unreachable. The app itself is fully self-contained (everything under
+`vendor/`), so no other network access is required to run the suite.
 
 ## MathJax 4 timing notes
 

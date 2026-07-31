@@ -2,10 +2,10 @@
 // active "\" TeX-command placeholder visible (dashed cursor box,
 // highlighted monospace token, slate-lock glow).
 import { chromium } from 'playwright-core';
-const browser = await chromium.launch();
+const browser = await (await import('./launch.mjs')).launch();
 const page = await browser.newPage({ viewport: { width: 980, height: 1400 } });
 page.on('pageerror', (e) => console.log('PAGEERROR:', e.message.slice(0, 200)));
-await page.goto('file:///home/user/mathslate-standalone/index.html', { waitUntil: 'domcontentloaded' });
+await page.goto(new URL('../index.html', import.meta.url).href, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#mathslate-editor .yui3-dd-draggable', { timeout: 90000 });
 await page.waitForSelector('#document-area .MathJax', { timeout: 30000 });
 await page.click('#btn-clear-doc');

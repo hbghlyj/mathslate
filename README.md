@@ -68,18 +68,26 @@ and everything typed afterwards continues inside it —
   (`\\frac` `Enter` `1`, click the denominator, `\\beta` `Enter` `+` →
   `\\frac{1}{\\beta+}`, even when the `+` is typed the instant the
   conversion lands);
-- `^`, `_`, `/` wrap the slot's last token into a script or fraction
-  right there, the argument box arms, and input keeps accumulating inside
-  the argument (`a` `^` `23` → `a^{23}` without leaving the fraction);
-- `Backspace` deletes inside the slot and, at an empty slot, steps out
-  instead of eating the structure;
-- exits are always explicit: `Esc`, an arrow/nav step (the caret parks
-  right beside the structure), or clicking other content.
+- arrow keys first move an **intra-slot caret** between the slot's tokens:
+  characters insert exactly at it and `Backspace` deletes the token to its
+  left; only stepping past an edge leaves the slot (the caret parks right
+  beside the structure);
+- `^`, `_`, `/` wrap the token **left of the intra-slot caret** into a
+  script or fraction right there, the argument box arms, and input keeps
+  accumulating inside the argument (`a` `^` `23` → `a^{23}` without leaving
+  the fraction). The same holds while a top-level script block is locked:
+  `1^23` then `←` then `^` hatches ON the `2` in place (`1^{2^{}3}`) —
+  a trigger with the caret at the slot's *end* keeps the classic
+  newest-wins whole-block wrap (`1/2/3` → `\frac{\frac{1}{2}}{3}`);
+- `Backspace` deletes inside the slot and, at an empty slot (or at the
+  slot's left edge), steps out instead of eating the structure;
+- exits are always explicit: `Esc`, an arrow step past an edge, or
+  clicking other content.
 
 The focus lives as a pure closure address (owning top-level block + JSON
-path into the slot's content array) — no DOM markers involved — so
-MathJax 4's asynchronous re-renders can never strand the cursor or bounce
-it out of the fraction. Boxes that the app arms *for you* (a fresh
+path into the slot's content array + intra-slot token index) — no DOM
+markers involved — so MathJax 4's asynchronous re-renders can never strand
+the cursor or bounce it out of the fraction. Boxes that the app arms *for you* (a fresh
 structure's first box, the script box after `^`/`_` at top level, macro
 conversions) keep the classic one-token-per-box behaviour: after such a
 fill, typing continues after the block.
@@ -131,11 +139,15 @@ The app is plain HTML/CSS/JS. Two ways to use it:
   # → http://localhost:8000
   ```
 
-An internet connection is required either way: YUI 3.18.1 and its TabView
-skin load from cdnjs; MathJax 4.1.3 (`tex-mml-chtml.js` and its NewCM
-webfont chunks, fetched on demand) loads from jsDelivr — cdnjs does not
-carry MathJax 4. (The original plugin used Yahoo's YUI CDN, which no longer
-exists.)
+No internet connection is needed: every runtime dependency is **vendored**
+under `vendor/` — YUI 3.18.1 (the npm build tree plus its TabView skin and
+a synthesized `assets/skins/sam/sprite.png`; the 41 rollup files the loader
+requests are regenerated as concatenations of their submodules, marked in
+each file's header), MathJax 4.1.3 (`tex-mml-chtml.js`, its SRE speech
+worker and the NewCM webfont packages, all resolved through
+`MathJax.loader.paths.fonts`). (The original plugin used Yahoo's YUI CDN,
+which no longer exists; an earlier revision of this standalone pulled YUI
+from cdnjs and MathJax from jsDelivr.)
 
 ## What was changed in the extraction
 
@@ -150,16 +162,16 @@ The editor core (`js/mathslate/*.js`, `css/styles.css`, `help.html`,
 | `plugin.js` / `mathslate.html` / `yui/build/*dialogue*` | **Dropped.** The TinyMCE plugin wrapper and Moodle dialogue module are replaced by `js/app.js`, which owns the "document" and the Insert/Copy/Clear actions that used to live on TinyMCE's dialogue buttons. |
 | `index.html`, `js/app.js`, `js/config.js`, `css/app.css`, `js/mathjax4-shim.js` | **New.** App shell, document model (source textarea + MathJax-rendered pane), clipboard/export helpers, keyboard entry of the literal character set, inlined config, and the MathJax v2-to-v4 API shim. |
 
-Also: YUI now loads from `cdnjs.cloudflare.com/ajax/libs/yui/3.18.1` with
-`combine:false` and `fetchCSS:false` (the TabView skin is linked by hand),
-and MathJax is pinned to `4.1.3` on jsDelivr.
+Also: YUI loads from `vendor/yui/` with `combine:false` and
+`fetchCSS:false` (the TabView skin is linked by hand), and MathJax is
+pinned to `4.1.3` under `vendor/mathjax/`.
 
 ## How it works
 
 ```
 index.html
- ├─ YUI 3.18.1 (cdnjs) ── loader pulls tabview / dd / io / json … modules
- ├─ MathJax 4.1.3 (jsDelivr, tex-mml-chtml)
+ ├─ YUI 3.18.1 (vendor/yui) ─ loader pulls tabview / dd / io / json … modules
+ ├─ MathJax 4.1.3 (vendor/mathjax, tex-mml-chtml; fonts in vendor/fonts)
  ├─ js/mathjax4-shim.js  the v2 API (Hub/Queue/Text/addElement, math/tex
  │                        scripts, Callback) re-expressed over MathJax 4
  ├─ js/strings.js        M.util.get_string() shim (was: Moodle lang strings)
@@ -182,15 +194,15 @@ the document source, which a MathJax-typeset pane renders live.
 Upstream Mathslate was written against the MathJax 2 API. The port keeps the
 four core modules essentially verbatim and adapts around them:
 
-* **Dependencies & config** — `mathjax@4.1.3/tex-mml-chtml.js` from jsDelivr
-  replaces the cdnjs 2.7.9 build (v4 ships no `es5/` or `-full` variants;
-  cdnjs simply does not carry it), and the v2 `MathJax.Hub.Config({...})`
+* **Dependencies & config** — `mathjax@4.1.3/tex-mml-chtml.js` (vendored;
+  v4 ships no `es5/` or `-full` variants) replaces the cdnjs 2.7.9 build,
+  and the v2 `MathJax.Hub.Config({...})`
   call becomes an inline v4 options object set before the bundle loads
   (`tex.inlineMath`/`displayMath` with the same `\( \)` / `\[ \]`
   delimiters + `processEscapes`, `options.skipHtmlTags` extended with
   `annotation`/`annotation-xml`, `chtml.displayAlign:'left'`,
-  `displayIndent:'0'`, `startup.typeset:false`). Webfonts stream from
-  jsDelivr's `@mathjax/mathjax-newcm-font@4.1.3` on demand.
+  `displayIndent:'0'`, `startup.typeset:false`). Webfonts load from the
+  vendored `@mathjax/mathjax-newcm-font@4.1.3` copy (`vendor/fonts/`).
 * **`js/mathjax4-shim.js`** re-expresses the v2 surface the core codes to —
   `MathJax.Hub` (`Queue`, `getAllJax`, `Typeset`, `isQuiet`, config hooks),
   `Hub.Queue`'s `['Text', jax, …]` element renderer, `MathJax.HTML.addElement`,
@@ -242,7 +254,7 @@ selection and focus), the `<`/`>` navigation buttons and arrow-key stepping
 (edits land AT the caret), script-block retention with its four explicit
 exits, replace-on-selection typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 53 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 55 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 

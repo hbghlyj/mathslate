@@ -1,0 +1,5 @@
+/* synthesized rollup for the standalone vendor copy: datatype-xml = datatype-xml-parse, datatype-xml-format */
+YUI.add("datatype-xml-parse",function(e,t){e.mix(e.namespace("XML"),{parse:function(t){var n=null,r;return typeof t=="string"&&(r=e.config.win,r.ActiveXObject!==undefined?(n=new ActiveXObject("Microsoft.XMLDOM"),n.async=!1,n.loadXML(t)):r.DOMParser!==undefined?n=(new DOMParser).parseFromString(t,"text/xml"):r.Windows!==undefined&&(n=new Windows.Data.Xml.Dom.XmlDocument,n.loadXml(t))),n===null||n.documentElement===null||n.documentElement.nodeName==="parsererror",n}}),e.namespace("Parsers").xml=e.XML.parse,e.namespace("DataType"),e.DataType.XML=e.XML},"3.18.1");
+
+YUI.add("datatype-xml-format",function(e,t){var n=e.Lang;e.mix(e.namespace("XML"),{format:function(e){try{if(!n.isUndefined(e.getXml))return e.getXml();if(!n.isUndefined(XMLSerializer))return(new XMLSerializer).serializeToString(e)}catch(t){return e&&e.xml?e.xml:n.isValue(e)&&e.toString?e.toString():""}}}),e.namespace("DataType"),e.DataType.XML=e.XML},"3.18.1");
+

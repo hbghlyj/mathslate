@@ -4,7 +4,7 @@ import { chromium } from 'playwright-core';
 const BASE = process.env.BASE || 'http://127.0.0.1:8123';
 const errors = [];
 
-const browser = await chromium.launch();
+const browser = await (await import('./launch.mjs')).launch();
 const page = await browser.newPage();
 page.on('pageerror', (e) => { errors.push('PAGEERROR: ' + e.message); console.log('PAGEERROR:', (e.stack || e.message).slice(0, 900)); });
 page.on('console', (m) => {
@@ -888,6 +888,48 @@ await page.waitForFunction(() =>
 await page.keyboard.type('q');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{p_q}', null, { timeout: 15000 });
 console.log('    _ built a subscript inside the denominator →', JSON.stringify(await texNS()), '✓');
+
+console.log('54. ^ pressed INSIDE a locked script block (caret mid-slot) hatches on the token left of the caret — never around the whole block');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('1');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1', null, { timeout: 20000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{}', null, { timeout: 20000 });
+await page.keyboard.type('2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^2', null, { timeout: 20000 });
+await page.keyboard.type('3');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{23}', null, { timeout: 20000 });
+await page.keyboard.press('ArrowLeft'); // caret slips between the 2 and the 3
+await page.keyboard.type('^'); // must wrap ONLY the 2, in place (the {{1}^{23}}^{} regression)
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{}3}', null, { timeout: 20000 });
+console.log('    ← then ^ wrapped just the 2 →', JSON.stringify(await texNS()), '| slate blocks:', await nonEmptyRows(), '(still 1 ✓)');
+await page.keyboard.type('5'); // into the fresh inner argument
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^53}', null, { timeout: 20000 });
+await page.keyboard.type('x'); // and keeps accumulating there
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{5x}3}', null, { timeout: 20000 });
+console.log('    "5x" accumulated inside the new inner argument →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('ArrowRight'); // past the inner slot's edge: step out to top level
+await page.keyboard.type('q');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1^{2^{5x}3}q', null, { timeout: 20000 });
+console.log('    → let the cursor out; "q" continues top-level →', JSON.stringify(await texNS()), '✓');
+
+console.log('55. a trigger with the caret at the slot\'s END keeps the classic newest-wins wrap (1/2/3 nesting)');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await page.waitForTimeout(200);
+await page.keyboard.type('1');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '1', null, { timeout: 20000 });
+await page.keyboard.type('/');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}', null, { timeout: 20000 });
+await page.keyboard.type('2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{2}', null, { timeout: 20000 });
+await page.keyboard.type('/'); // caret at the very end of the locked slot: wrap the whole block
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{\\frac{1}{2}}{}', null, { timeout: 20000 });
+await page.keyboard.type('3');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{\\frac{1}{2}}{3}', null, { timeout: 20000 });
+console.log('    end-of-slot / nested TeX-style →', JSON.stringify(await texNS()), '✓');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
