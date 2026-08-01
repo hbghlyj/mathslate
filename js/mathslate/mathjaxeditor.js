@@ -267,7 +267,7 @@ NS.MathJaxEditor = function(id) {
                     // substitute the dropped tool's JSON before the
                     // insert (no-op when the host does not listen).
                     // Mathslate's matrix tool inserts workspace drags at
-                    // the size last chosen in its dimension dialog —
+                    // the size and brackets last chosen in its dialog —
                     // a drag cannot pause for a prompt mid-gesture
                     // (see resizeMatrixJSON/__mathslateDropJSON in
                     // js/app.js).

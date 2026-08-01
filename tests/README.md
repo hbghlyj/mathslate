@@ -143,7 +143,18 @@ workspace drags and leaves other tools untouched; a TeX-tab-typed
 `\matrix{x&y\\z&w}` compiles normally without ever opening the
 dialog; and a dialog-chosen 2×2 reproduces the legacy template's TeX
 byte for byte.
-71 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the matrix wrapper setting: the dialog's brackets
+selector starts bare with the remembered 2×2; choosing parentheses
+renders `( )` around the slate grid, arms the first cell and fills to
+`\begin{pmatrix}a&b\\c&d\end{pmatrix}` (the status line names the
+wrapper); the choice is remembered, `[ ]`/`{ }`/`| |`/`‖ ‖` each emit
+their amsmath environment with the slate showing matching delimiters;
+the drop hook substitutes size AND wrapper (mo delimiters with empty
+tex overrides, so the environment owns the brackets exactly once); a
+typed `\begin{bmatrix}…\end{bmatrix}` never opens the dialog; and
+switching back to bare restores the legacy `\matrix{…}` output with no
+delimiters on the slate.
+72 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

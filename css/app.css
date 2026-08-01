@@ -297,6 +297,26 @@ main {
     color: #68758c;
 }
 
+.matrix-dialog-wrap {
+    margin-top: -8px; /* tuck the wrapper row under the size row */
+}
+
+.matrix-dialog-wrap select {
+    flex: 1;
+    padding: 7px 8px;
+    font-size: 13px;
+    font-family: "Courier New", monospace;
+    border: 1px solid #b9c2d1;
+    border-radius: 6px;
+    background: #f6f8fb;
+    color: #273043;
+}
+
+.matrix-dialog-wrap select:focus {
+    outline: none;
+    border-color: #3b4a6b;
+}
+
 .matrix-dialog-actions {
     display: flex;
     gap: 8px;

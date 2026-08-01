@@ -101,7 +101,8 @@
         <p class="card-hint">Click a symbol in the toolbox (or drag it onto the slate). Click a piece of the
            expression to select it, then click-or-drop onto another piece to insert inside it.
            The <strong>matrix tool</strong> asks for its size first &mdash; any 1&times;1 to
-           10&times;10 grid &mdash; and drops you into the first cell, <kbd>Tab</kbd> hopping
+           10&times;10 grid, bare or wrapped in parentheses, brackets, braces or bars &mdash;
+           and drops you into the first cell, <kbd>Tab</kbd> hopping
            cell to cell.
            The <em>T<sub>E</sub>X</em> tab lets you type TeX directly. <strong>Keyboard:</strong> type
            letters, digits and <code>+ &minus; * = ( ) [ ] &lt; &gt; , ; : ! ? | . '</code> straight into
@@ -188,14 +189,25 @@
     <div id="matrix-dialog" class="matrix-dialog" role="dialog" aria-modal="true"
          aria-labelledby="matrix-dialog-title">
         <h3 id="matrix-dialog-title" class="matrix-dialog-title">Insert a matrix</h3>
-        <p class="matrix-dialog-hint">Pick the grid size (1&ndash;10 each way). The size is
-           remembered &mdash; the next matrix, and drags of the tool, reuse it.</p>
+        <p class="matrix-dialog-hint">Pick the grid size (1&ndash;10 each way) and its brackets.
+           Both are remembered &mdash; the next matrix, and drags of the tool, reuse them.</p>
         <div class="matrix-dialog-fields">
             <label for="matrix-rows">Rows</label>
             <input id="matrix-rows" type="number" min="1" max="10" step="1" value="2">
             <span class="matrix-dialog-times" aria-hidden="true">&times;</span>
             <label for="matrix-cols">Columns</label>
             <input id="matrix-cols" type="number" min="1" max="10" step="1" value="2">
+        </div>
+        <div class="matrix-dialog-fields matrix-dialog-wrap">
+            <label for="matrix-wrap">Brackets</label>
+            <select id="matrix-wrap">
+                <option value="" selected>None &mdash; \matrix</option>
+                <option value="p">( ) &mdash; pmatrix</option>
+                <option value="b">[ ] &mdash; bmatrix</option>
+                <option value="B">{ } &mdash; Bmatrix</option>
+                <option value="v">| | &mdash; vmatrix</option>
+                <option value="V">&#x2016; &#x2016; &mdash; Vmatrix</option>
+            </select>
         </div>
         <div class="matrix-dialog-actions">
             <button id="matrix-ok" class="btn primary">Insert matrix</button>

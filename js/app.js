@@ -1470,16 +1470,36 @@
                 target = blankNearCaret(dir);
             }
             if (target < 0 || target >= total) { resumeInput(); return; }
-            pollUntil(function () {
-                if (!queueQuiet()) { return false; }
-                var ids = blankIds();
-                return ids.length === total && !!findShim(ids[target]);
-            }, function () {
-                var ids = blankIds();
-                var shim = findShim(ids[target]);
-                if (shim) { shim.click(); } // user-facing: not a programmatic arm
-                pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
-            }, 40, resumeInput);
+            // Arm the target by clicking its user-facing shim — then VERIFY
+            // the marker actually moved there. The deselect above queues a
+            // re-render whose shim-overlay rebuild can still be pending at
+            // click time: a detached shim eats the click silently, and the
+            // pre-existing selection marker then satisfies a plain
+            // hasSlateSelection poll — the cycle would look done while
+            // nothing moved (the intermittent "Tab does nothing" flake).
+            var armAttempts = 0;
+            var armDone = function () {
+                return hasSlateSelection() && selectedNodeIsBlank()
+                    && macroSlotIndex() === target;
+            };
+            var tryArmTarget = function () {
+                if (armAttempts++ >= 6) { resumeInput(); return; }
+                pollUntil(function () {
+                    if (!queueQuiet()) { return false; }
+                    if (armDone()) { return true; }
+                    var ids = blankIds();
+                    return ids.length === total && !!findShim(ids[target]);
+                }, function () {
+                    if (armDone()) { resumeInput(); return; }
+                    var ids = blankIds();
+                    var shim = findShim(ids[target]);
+                    if (shim) { shim.click(); } // user-facing: not a programmatic arm
+                    pollUntil(function () {
+                        return queueQuiet() && armDone();
+                    }, resumeInput, 20, tryArmTarget); // settle, else re-click
+                }, 40, resumeInput);
+            };
+            tryArmTarget();
         }, 40, resumeInput);
     }
 
@@ -2576,8 +2596,24 @@
      * mathjaxeditor.js) substitutes it on workspace drags, which
      * cannot pause for a dialog mid-gesture. */
     var matrixDims = {rows: 2, cols: 2}; // last chosen size
+    var matrixWrap = '';                 // last chosen wrapper ('' = bare \\matrix{})
     var matrixDirect = 0;                // the dialog's own insert is in flight
     var matrixPending = null;            // template JSON while the dialog is open
+
+    // Wrapper variants: bare \\matrix{…} (the legacy tool) or an
+    // amsmath ENVIRONMENT — \\bmatrix-style plain macros exist in
+    // neither MathJax 4 nor modern amsmath, but
+    // \\begin{…matrix}/\\end{…matrix} parse everywhere (verified
+    // against the vendored MathJax). The delimiters are canvas-visible
+    // mo elements with an EMPTY tex override, so the environment owns
+    // the brackets in the TeX output exactly once.
+    var MATRIX_WRAPS = {
+        p: {env: 'pmatrix', delims: ['(', ')']},
+        b: {env: 'bmatrix', delims: ['[', ']']},
+        B: {env: 'Bmatrix', delims: ['{', '}']},
+        v: {env: 'vmatrix', delims: ['\u2223', '\u2223']},
+        V: {env: 'Vmatrix', delims: ['\u2225', '\u2225']}
+    };
 
     // The matrix tool is recognized by its wrapper's tex SHAPE: the
     // template emits exactly ["\\matrix{", slot, "}"] — three parts
@@ -2619,7 +2655,7 @@
     // Rebuild the tool's JSON at rows×cols by cloning the template's own
     // three cell prototypes — so attributes, tex pieces and blank markers
     // stay byte-identical to the config's for every cell of any size.
-    function resizeMatrixJSON(json, rows, cols) {
+    function resizeMatrixJSON(json, rows, cols, wrap) {
         var root = null;
         try { root = JSON.parse(json); } catch (e) { return null; }
         var table = findMtable(root);
@@ -2644,6 +2680,19 @@
             rowsOut.push(['mtr', {}, cells]);
         }
         table[2] = rowsOut;
+        // Swap the wrapper: the mrow's tex template carries the amsmath
+        // environment; stretchy mo delimiters make the brackets visible
+        // on the slate but contribute NOTHING to the TeX (their override
+        // is the empty string — the environment owns them).
+        if (wrap && MATRIX_WRAPS[wrap]) {
+            var w = MATRIX_WRAPS[wrap];
+            root[1].tex = ['\\begin{' + w.env + '}', 0, '\\end{' + w.env + '}'];
+            root[2] = [['mrow', {}, [
+                ['mo', {tex: ['']}, w.delims[0]],
+                root[2][0],
+                ['mo', {tex: ['']}, w.delims[1]]
+            ]]];
+        }
         return JSON.stringify(root);
     }
 
@@ -2653,7 +2702,8 @@
     // the addMath interception hold off entirely.
     function matrixEls() {
         return {backdrop: $('matrix-dialog-backdrop'), rows: $('matrix-rows'),
-                cols: $('matrix-cols'), ok: $('matrix-ok'), cancel: $('matrix-cancel')};
+                cols: $('matrix-cols'), wrap: $('matrix-wrap'),
+                ok: $('matrix-ok'), cancel: $('matrix-cancel')};
     }
 
     function openMatrixDialog(json) {
@@ -2662,6 +2712,7 @@
         matrixPending = json;
         els.rows.value = matrixDims.rows;
         els.cols.value = matrixDims.cols;
+        els.wrap.value = matrixWrap;
         els.backdrop.hidden = false;
         els.rows.focus();
         els.rows.select();
@@ -2683,8 +2734,10 @@
             return Math.min(10, Math.max(1, v));
         };
         var rows = clamp(els.rows.value), cols = clamp(els.cols.value);
-        var json = matrixPending && resizeMatrixJSON(matrixPending, rows, cols);
+        var wrap = MATRIX_WRAPS[els.wrap.value] ? els.wrap.value : '';
+        var json = matrixPending && resizeMatrixJSON(matrixPending, rows, cols, wrap);
         matrixDims = {rows: rows, cols: cols};
+        matrixWrap = wrap;
         closeMatrixDialog();
         if (!json || !editor || !editor.mje) { return; }
         matrixDirect++;
@@ -2692,7 +2745,8 @@
         // the slate renders and the first cell's box arms as the cursor.
         try { editor.mje.addMath(json); }
         finally { matrixDirect--; }
-        status('Inserted a ' + rows + ' × ' + cols + ' matrix.');
+        status('Inserted a ' + rows + ' × ' + cols
+            + (wrap ? ' ' + MATRIX_WRAPS[wrap].env : ' matrix') + '.');
     }
 
     function wireMatrixDialog() {
@@ -2716,7 +2770,7 @@
                 closeMatrixDialog();
             }
             else if (e.key === 'Tab') { // trap traversal inside the dialog
-                var order = [els.rows, els.cols, els.ok, els.cancel];
+                var order = [els.rows, els.cols, els.wrap, els.ok, els.cancel];
                 var i = order.indexOf(document.activeElement);
                 if (i !== -1) {
                     e.preventDefault();
@@ -2770,7 +2824,7 @@
         // the dialog (a drag cannot pause for a prompt mid-gesture).
         window.__mathslateDropJSON = function (json) {
             if (!isMatrixToolJSON(json)) { return null; }
-            return resizeMatrixJSON(json, matrixDims.rows, matrixDims.cols) || null;
+            return resizeMatrixJSON(json, matrixDims.rows, matrixDims.cols, matrixWrap) || null;
         };
     }
 

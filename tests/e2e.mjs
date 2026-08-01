@@ -1740,6 +1740,19 @@ async function clickFracTool70() {
         return true;
     }, null, { timeout: 10000 });
 }
+// Target-specific arm wait: a plain "any blank is selected" wait
+// STALE-MATCHES when an old box is still armed at Tab time (the cycle
+// behind it is multi-tick under render congestion); wait for the
+// marker on the EXPECTED blank index instead.
+async function waitBlankIdx70(idxExpected) {
+    await page.waitForFunction((idx) => {
+        const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
+        if (!sel || !sel.id) { return false; }
+        const blanks = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+            .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').map((d) => d.id);
+        return blanks.indexOf(sel.id) === idx;
+    }, idxExpected, { timeout: 12000 });
+}
 const selBlankIdx70 = () => page.evaluate(() => {
     const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
     const blanks = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
@@ -1817,7 +1830,7 @@ await page.waitForTimeout(300);
 await page.keyboard.type('x^');
 await texIs68('\\frac{1}{}x^{}');
 await page.keyboard.press('Tab'); // from the superscript box → first empty box (denominator)
-await waitSelectedBox70();
+await waitBlankIdx70(0); // target-specific: the argument's own marker must not stale-match
 await page.keyboard.type('3');
 await texIs68('\\frac{1}{3}x^{}');
 await page.keyboard.press('Shift+Tab'); // back to the superscript argument
@@ -1872,7 +1885,7 @@ console.log('    dialog 3×3 → 9 blank cells, the first armed as the cursor �
 
 // 2) Shift+Tab wraps to the LAST cell; Tab wraps back and fills row-major
 await page.keyboard.press('Shift+Tab');
-await waitSelectedBox70();
+await waitBlankIdx70(8); // target-specific: cell (1,1)'s marker must not stale-match
 minfo71 = await selBlankIdx70();
 if (minfo71.idx !== 8 || minfo71.count !== 9) {
     throw new Error('Shift+Tab must wrap to the last cell (got idx ' + minfo71.idx + ' of ' + minfo71.count + ')');
@@ -1991,6 +2004,113 @@ await waitSelectedBox70();
 await page.keyboard.type('d');
 await texIs68('\\matrix{a&b\\\\c&d}');
 console.log('    dialog 2×2 fills to the legacy', "\\matrix{a&b\\\\c&d} ✓");
+await page.click('#btn-clear-slate');
+
+console.log('72. matrix wrapper setting: bare / ( ) / [ ] / { } / | | / ‖ ‖ brackets');
+// step-local helpers (clickMatrixTool71/setDims71/dialog*71 + step-70 box waits are reused)
+const setWrap72 = (v) => page.$eval('#matrix-wrap', (el, val) => { el.value = val; }, v);
+const wrapVal72 = () => page.$eval('#matrix-wrap', (el) => el.value);
+const canvasHas72 = (ch) => page.evaluate((c) => document.getElementById('canvas').textContent.indexOf(c) !== -1, ch);
+// the canvas typeset can lag the TeX read-out — poll glyph assertions
+const waitCanvasHas72 = (ch) => page.waitForFunction(
+    (c) => document.getElementById('canvas').textContent.indexOf(c) !== -1, ch, { timeout: 12000 });
+
+// 1) parentheses: the dialog opens on the remembered 2×2 with bare brackets
+await freshSlate68();
+await clickMatrixTool71();
+let dims72 = await dialogDims71();
+if (dims72[0] !== '2' || dims72[1] !== '2') { throw new Error('matrix dialog must remember 2×2, got ' + dims72.join('×')); }
+if ((await wrapVal72()) !== '') { throw new Error('the wrapper must start bare, got ' + (await wrapVal72())); }
+await setWrap72('p');
+await page.click('#matrix-ok');
+await texIs68('\\begin{pmatrix}&\\\\&\\end{pmatrix}');
+await waitSelectedBox70();
+let minfo72 = await selBlankIdx70();
+if (minfo72.idx !== 0 || minfo72.count !== 4) {
+    throw new Error('pmatrix must arm the first of 4 cells (got ' + minfo72.idx + ' of ' + minfo72.count + ')');
+}
+await waitCanvasHas72('(');
+await waitCanvasHas72(')');
+const status72 = await page.$eval('#status-line', (el) => el.textContent);
+if (status72.indexOf('pmatrix') === -1) { throw new Error('status must announce the pmatrix, got: ' + status72); }
+await page.keyboard.type('a');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('c');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('d');
+await texIs68('\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}');
+console.log('    ( ) pmatrix 2×2 armed + filled →', "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}, slate shows the parens ✓");
+
+// 2) the wrapper is remembered; switch to [ ] via Enter-confirm
+await freshSlate68();
+await clickMatrixTool71();
+if ((await wrapVal72()) !== 'p') { throw new Error('matrix dialog must remember the pmatrix wrapper'); }
+await setWrap72('b');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{bmatrix}&\\\\&\\end{bmatrix}');
+await waitCanvasHas72('[');
+await waitCanvasHas72(']');
+console.log('    remembered p, switched to [ ] bmatrix via Enter → slate shows the brackets ✓');
+
+// 3) braces { } and single/double bars
+for (const w72 of [{v: 'B', tex: 'begin{Bmatrix}', glyph: '{'},
+                   {v: 'v', tex: 'begin{vmatrix}', glyph: '∣'},
+                   {v: 'V', tex: 'begin{Vmatrix}', glyph: '∥'}]) {
+    await freshSlate68();
+    await clickMatrixTool71();
+    await setWrap72(w72.v);
+    await page.click('#matrix-ok');
+    await texIs68('\\' + w72.tex + '&\\\\&\\end{' + w72.tex.slice(6));
+    await waitCanvasHas72(w72.glyph);
+}
+console.log('    { } Bmatrix, | | vmatrix, ‖ ‖ Vmatrix — TeX environments and slate delimiters ✓');
+
+// 4) drags inherit the remembered wrapper (V) through the documented hook
+const hook72 = await page.evaluate(() => {
+    const tpl = JSON.stringify(['mrow', {tex: ['\\matrix{', 0, '}']}, [['mtable', {}, [
+        ['mtr', {}, [['mtd', {}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]],
+        ['mtr', {}, [['mtd', {tex: ['\\\\', 0]}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]]
+    ]]]]);
+    const root = JSON.parse(window.__mathslateDropJSON(tpl));
+    const inner = root[2][0];
+    return { tex: root[1].tex, kids: inner[2].map((k) => k[0]), moTex: inner[2][0][1].tex, mo: inner[2][0][2] };
+});
+if (hook72.tex[0] !== '\\begin{Vmatrix}' || hook72.tex[2] !== '\\end{Vmatrix}'
+    || hook72.kids.join(',') !== 'mo,mtable,mo' || hook72.moTex[0] !== '' || hook72.mo !== '∥') {
+    throw new Error('drop hook must substitute size AND wrapper, got ' + JSON.stringify(hook72));
+}
+console.log('    __mathslateDropJSON substitutes size AND wrapper (mo delimiters with empty tex) ✓');
+
+// 5) a typed TeX environment never opens the dialog
+await freshSlate68();
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(500);
+await page.evaluate(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    input.value = '\\begin{bmatrix}x&y\\\\z&w\\end{bmatrix}';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await texIs68('\\begin{bmatrix}x&y\\\\z&w\\end{bmatrix}');
+if (!(await dialogHidden71())) { throw new Error('a typed TeX bmatrix must not open the size dialog'); }
+console.log('    typed TeX \\begin{bmatrix}… compiled normally (no dialog) ✓');
+
+// 6) back to bare: the legacy template and no slate delimiters
+await freshSlate68();
+await clickMatrixTool71();
+if ((await wrapVal72()) !== 'V') { throw new Error('matrix dialog must remember the Vmatrix wrapper'); }
+await setWrap72('');
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.waitForTimeout(1000); // let any stale canvas typeset drain
+if (await canvasHas72('(')) { throw new Error('a bare matrix must not show delimiters'); }
+console.log('    wrapper back to none → legacy \\matrix{…}, no slate delimiters ✓');
 await page.click('#btn-clear-slate');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
