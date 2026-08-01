@@ -114,7 +114,11 @@ the editor reclaims DOM focus **for the slate** from whatever form control
 held it (the TeX field, the document textarea — even on browsers that
 keep inputs focused across outside clicks), so keystrokes always follow
 the visible caret. The blinking caret is the app's focus indicator, so
-the browser's default focus outline on the workspace is suppressed.
+the browser's default focus outline on the workspace is suppressed. On
+the empty slate the caret hugs the decoy box absolutely (MathJax typesets
+the empty slate's container block-level, so an in-flow caret would wrap
+to a fresh line below the slate — visibly centered inside the black
+preview panel while the □ sits alone at the canvas's bottom left).
 
 The focus lives as a pure closure address (owning top-level block + JSON
 path into the slot's content array + intra-slot token index + the trailing

@@ -44,7 +44,10 @@ leftwards the same way).
 Step 60 reloads the page and checks launch behaviour: the TeX
 tool's input must not hold DOM focus, the bare page body must not either —
 the slate CANVAS itself is `document.activeElement` from launch
-(`tabindex="-1"`, focused at boot) — `\sqrt` `Space` `b` typed with no
+(`tabindex="-1"`, focused at boot) — and the launch caret hugs the decoy
+box inside `#canvas` (absolute anchor; the empty slate's MathJax
+container is block-level, so an in-flow caret would wrap down into the
+preview panel). `\sqrt` `Space` `b` typed with no
 click lands on the slate with the caret anchored inside the radical, and a
 slate mousedown hands DOM focus back to the slate canvas from the field.
 Step 61 checks that an arrow out of an ARMED-BUT-EMPTY script

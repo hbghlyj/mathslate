@@ -464,7 +464,7 @@ const mml39 = await page.$eval('#mathslate-editor #canvas', (el) => el.innerHTML
 console.log('    \sqrt{x}:', JSON.stringify(await texNS()), '| canvas has msqrt:', mml39.includes('msqrt'));
 
 console.log('40. caret: blinks at the end when nothing is selected; hides on selection; returns on Esc');
-const caretInCanvas = () => document.querySelector('#mathslate-editor #canvas .mathslate-caret');
+const caretInCanvas = () => document.querySelector('.mathslate-caret');
 const caretAtEnd = () => {
     const canvas = document.querySelector('#mathslate-editor #canvas');
     return canvas && canvas.lastElementChild && canvas.lastElementChild.classList.contains('mathslate-caret');
@@ -472,10 +472,10 @@ const caretAtEnd = () => {
 await page.click('#btn-clear-slate');
 await page.click('main');
 await page.waitForFunction(() =>
-    !!document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 15000 });
+    !!document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
 console.log('    caret present on the empty slate ✓');
 await page.waitForFunction(() => {
-    const c = document.querySelector('#mathslate-editor #canvas .mathslate-caret');
+    const c = document.querySelector('.mathslate-caret');
     return c && getComputedStyle(c).animationName !== 'none';
 }, null, { timeout: 5000 });
 console.log('    caret has a blinking animation ✓');
@@ -495,10 +495,10 @@ await page.evaluate(() => {
     }
 });
 await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 5000 });
-await page.waitForFunction(() => !document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 10000 });
+await page.waitForFunction(() => !document.querySelector('.mathslate-caret'), null, { timeout: 10000 });
 console.log('    selection made → caret hidden ✓');
 await page.keyboard.press('Escape');
-await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 10000 });
+await page.waitForFunction(() => !!document.querySelector('.mathslate-caret'), null, { timeout: 10000 });
 console.log('    Esc → caret back at the end ✓');
 
 console.log('41. replace rule: typing with a glyph selected replaces it entirely, caret shows after');
@@ -520,7 +520,7 @@ await page.keyboard.type('z');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'zb', null, { timeout: 15000 });
 await page.waitForFunction(() =>
     !document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected')
-    && !!document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 10000 });
+    && !!document.querySelector('.mathslate-caret'), null, { timeout: 10000 });
 console.log('    "ab" select a, type z → "zb" ✓ selection dropped, caret visible ✓');
 
 console.log('42. Backspace audit: no browser history navigation; caret-state deletes the last block');
@@ -545,9 +545,9 @@ console.log('    still on the app page (no history navigation):', page.url() ===
 console.log('43. caret focus rules: hides while a text control is focused, returns on slate focus');
 await page.click('#btn-clear-slate');
 await page.click('main');
-await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 10000 });
+await page.waitForFunction(() => !!document.querySelector('.mathslate-caret'), null, { timeout: 10000 });
 await page.click('#document-source');
-await page.waitForFunction(() => !document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 10000 });
+await page.waitForFunction(() => !document.querySelector('.mathslate-caret'), null, { timeout: 10000 });
 console.log('    hidden while the document textarea holds focus ✓');
 // (a real click on the workspace is hit-tested against the blank-box shims
 // that overlay it; exercise the app's mousedown focus path directly)
@@ -555,7 +555,7 @@ await page.evaluate(() => {
     document.querySelector('#mathslate-editor #canvas')
         .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 });
-await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mathslate-caret'), null, { timeout: 10000 });
+await page.waitForFunction(() => !!document.querySelector('.mathslate-caret'), null, { timeout: 10000 });
 console.log('    back after focusing the slate ✓');
 
 console.log('44. TeX: single-char braceless (x^2); retention writes real multi-char args (e^{2x}); raw y^{2x} keeps braces');
@@ -1115,6 +1115,19 @@ await page.waitForFunction(() =>
     document.activeElement === document.querySelector('#mathslate-editor #canvas')
     && document.activeElement !== document.body, null, { timeout: 15000 });
 console.log('    the slate canvas itself owns DOM focus at launch (not the page body) ✓');
+// …and the launch caret must hug the decoy box INSIDE #canvas: on the
+// empty slate MathJax emits a BLOCK-level container, and the old in-flow
+// caret wrapped to a fresh line below it — visibly centered inside the
+// black preview panel while the □ sat alone at the canvas's bottom left
+await page.waitForFunction(() => {
+    const caret = document.querySelector('.mathslate-caret');
+    const blank = document.querySelector('#mathslate-editor #canvas mjx-mo.blank');
+    if (!caret || !blank) { return false; }
+    const c = caret.getBoundingClientRect();
+    const b = blank.getBoundingClientRect();
+    return Math.abs(c.left - b.right) < 6 && Math.abs(c.top - b.top) < 6;
+}, null, { timeout: 15000 });
+console.log('    the launch caret hugs the decoy box inside #canvas (not the preview panel) ✓');
 // the report's sequence, typed with NO click anywhere
 await page.keyboard.type('\\sqrt');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });

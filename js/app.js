@@ -180,7 +180,22 @@
         // DOM, which lags the model while renders are in flight; shrinking
         // caret.gap here would corrupt the next keystroke's position.
         var g = Math.max(0, Math.min(caret.gap, m));
-        if (!m || g >= m) { return null; }
+        if (!m || g >= m) {
+            if (!m) {
+                // Empty slate: the only rendered content is the decoy box.
+                // Anchor the caret absolutely to it — the in-flow fallback
+                // would wrap to a fresh line BELOW the empty slate's
+                // block-level MathJax container, visibly parking the caret
+                // inside the preview panel's territory (the "___| in the
+                // black box, □ alone in the canvas" launch look).
+                var bids = blankIds();
+                var decoy = bids.length === 1
+                    ? document.querySelector('#mathslate-editor #canvas [id="' + bids[0] + '"]')
+                    : null;
+                if (decoy) { return { el: decoy, trailing: true }; }
+            }
+            return null;
+        }
         var nshim = findShim(ids[g]);
         return nshim ? {el: nshim, trailing: false} : null;
     }
