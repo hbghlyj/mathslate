@@ -155,8 +155,13 @@ then walks the numerator left token by token, and one final `←` past
 its start exits the fraction to the left — while `→` past the
 denominator's end exits to the right. This holds both while a typed `/`
 block is still locked and after clicking into a box of a finished
-fraction. (A bare base numerator is wrapped in an invisible `mrow` so
-the caret has a socket — TeX and rendering are unchanged.)
+fraction. Exiting a focused slot — by arrow or by `Esc` — also sheds
+the slot's placeholder socket: no stray empty box is left on the slate
+or the preview canvas once the caret has moved on, and a `Space`/`Enter`
+that closes a TeX-command box can never be mistaken for a script-block
+exit by a fast type-ahead. (A bare base numerator is wrapped in an
+invisible `mrow` so the caret has a socket — TeX and rendering are
+unchanged.)
 
 **Placeholder-first insertion.** Dropping a structure onto the slate
 from the toolbox — by click or by drag — puts the cursor straight into

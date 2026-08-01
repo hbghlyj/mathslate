@@ -2113,6 +2113,96 @@ if (await canvasHas72('(')) { throw new Error('a bare matrix must not show delim
 console.log('    wrapper back to none → legacy \\matrix{…}, no slate delimiters ✓');
 await page.click('#btn-clear-slate');
 
+console.log('73. exiting a focused fraction sheds the slot placeholder (the "□ stays after →" report)');
+// step-local helpers: the socket shows as an empty preview box and a □ glyph on the canvas
+const slateBoxCount73 = () => page.evaluate(() =>
+    [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+        .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').length);
+const canvasBoxCount73 = () => page.evaluate(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length);
+async function boxesAre73(n, label) {
+    try {
+        await page.waitForFunction((want) =>
+            [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+                .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').length === want,
+            n, { timeout: 15000 });
+    } catch (e) {
+        throw new Error(label + ': expected ' + n + ' placeholder box(es), got ' + (await slateBoxCount73()));
+    }
+}
+async function canvasBoxesGone73(label) {
+    await page.waitForFunction(() => !document.querySelector('#mathslate-editor #canvas .mjx-c25FB'), null, { timeout: 12000 })
+        .catch(async () => { throw new Error(label + ': canvas □ glyph never went away'); });
+}
+
+// 1) the report flow: 1/\gamma Enter arms the slot socket; → sheds it and the caret exits
+await freshSlate68();
+await page.keyboard.type('1');
+await page.keyboard.press('/');
+await page.keyboard.type('\\gamma');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{1}{\\gamma}');
+await boxesAre73(1, 'the conversion arms the slot socket');
+await page.keyboard.press('ArrowRight');
+await texIs68('\\frac{1}{\\gamma}');
+await boxesAre73(0, '→ must shed the slot placeholder');
+await canvasBoxesGone73('→ out of the fraction');
+await page.keyboard.type('x'); // the caret transitioned cleanly outside
+await texIs68('\\frac{1}{\\gamma}x');
+console.log('    1/\\gamma Enter → socket armed; → sheds it (no box, no □), typing lands after the fraction ✓');
+
+// 2) Esc from the same state sheds it too
+await freshSlate68();
+await page.keyboard.type('1');
+await page.keyboard.press('/');
+await page.keyboard.type('\\gamma');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{1}{\\gamma}');
+await boxesAre73(1, 'conversion arms the socket (Esc flow)');
+await page.keyboard.press('Escape');
+await boxesAre73(0, 'Esc must shed the slot placeholder');
+await canvasBoxesGone73('Esc out of the fraction');
+console.log('    Escape from the armed socket sheds the placeholder the same way ✓');
+
+// 3) ← climbing keeps exactly ONE socket alive through the walk and the jump
+await freshSlate68();
+await page.keyboard.type('2');
+await page.keyboard.press('/');
+await page.keyboard.type('\\beta');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{2}{\\beta}');
+await boxesAre73(1, 'conversion arms the socket (climb flow)');
+await page.keyboard.press('ArrowLeft'); // walk to the denominator start
+await boxesAre73(1, 'mid-walk keeps the caret socket');
+await page.keyboard.press('ArrowLeft'); // climb to the numerator end
+await boxesAre73(1, 'the climb hands ONE socket to the numerator');
+await page.keyboard.type('9');
+await texIs68('\\frac{29}{\\beta}');
+await page.keyboard.press('ArrowLeft'); // walk the numerator
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft'); // …and out to the left
+await boxesAre73(0, 'the final ← sheds every placeholder');
+await canvasBoxesGone73('← out of the fraction');
+await page.keyboard.type('q');
+await texIs68('q\\frac{29}{\\beta}');
+console.log('    ← walked, climbed, filled \\frac{29}{\\beta}, exited clean →', "q\\frac{29}{\\beta} ✓");
+
+// 4) a filled denominator: socket continuity while typing, gone after →
+await freshSlate68();
+await page.keyboard.type('3');
+await page.keyboard.press('/');
+await page.keyboard.type('\\delta');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{3}{\\delta}');
+await page.keyboard.type('7');
+await texIs68('\\frac{3}{\\delta7}');
+await boxesAre73(1, 'fill continuity keeps exactly one socket');
+await page.keyboard.press('ArrowRight');
+await boxesAre73(0, '→ sheds it after the fill');
+await canvasBoxesGone73('→ out of a filled denominator');
+console.log('    filled \\frac{3}{\\delta7} kept one socket, → shed it ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

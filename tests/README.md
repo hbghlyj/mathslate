@@ -154,7 +154,17 @@ tex overrides, so the environment owns the brackets exactly once); a
 typed `\begin{bmatrix}…\end{bmatrix}` never opens the dialog; and
 switching back to bare restores the legacy `\matrix{…}` output with no
 delimiters on the slate.
-72 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the stuck-placeholder fix: typing `1/\gamma` and
+pressing `Enter` converts and arms the fraction's slot socket (one empty
+preview box, one canvas □); `→` out of the denominator sheds both and
+further typing lands cleanly after the fraction; `Escape` from the same
+state sheds it too. Climbing with `←` keeps exactly ONE socket alive
+through the denominator walk and the numerator jump (a fill there lands
+as `\frac{29}{\beta}`), and the final `←` past the numerator's start
+exits with every placeholder gone. A filled denominator
+(`3/\delta` `Enter` then `7`) also keeps exactly one socket while
+typing and sheds it on `→`.
+73 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

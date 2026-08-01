@@ -736,6 +736,13 @@
             finishMacro();
             return;
         }
+        if (evt.type === 'release') { // Space/Enter: decide at DEQUEUE time
+            inputQueue.shift();
+            if (script.awaiting) { inputQueue.unshift({type: 'script-exit'}); pumpInput(); return; }
+            inputQueue.unshift({type: 'macro-end'}); // a no-op when no box is open
+            pumpInput();
+            return;
+        }
         if (evt.type === 'script-exit') { // Space/Enter let the cursor out
             inputQueue.shift();
             exitScript();
@@ -746,6 +753,16 @@
             inputQueue.shift();
             if (!macroState.active) {
                 if (slotFocus.active) {
+                    // An armed BOX (the conversion's re-arm, a fill's, a
+                    // click's) is a live SELECTION on the slate — and
+                    // rebuildSlate's clear() degenerates into the core's
+                    // "remove the selected snippet" while one is live: the
+                    // rip would leave the old item on the slate mangled,
+                    // its placeholder box stuck RENDERED after the caret
+                    // moved on (the "□ stays after → out of a
+                    // fraction" report). Heal first, like the Esc branch
+                    // above and cycleBlank's clear-selections rule do.
+                    if (hasSlateSelection()) { deselectSlate(); }
                     // An arrow first moves the caret INSIDE the slot (between
                     // its tokens); only at an edge does the press step out —
                     // and even then it peels exactly ONE nesting level: a
@@ -2997,9 +3014,15 @@
             if (e.key === 'Enter') {
                 // Enter renders no glyph: it lets the cursor out of a script
                 // block, or closes an open TeX-command box like any other
-                // terminator.
+                // terminator. WHICH lock is live is decided by the PUMP at
+                // dequeue time (a neutral 'release'): keydown-time sniffing
+                // races a fast type-ahead — pressed before the queued '\\'
+                // was even pumped open, Enter would see the stale '/' lock's
+                // script.awaiting and close the wrong thing, leaving the
+                // just-opened macro box running forever (the "\\gamma Enter
+                // does nothing" half of the stuck-placeholder report).
                 e.preventDefault();
-                enqueue(script.awaiting ? {type: 'script-exit'} : {type: 'macro-end'});
+                enqueue({type: 'release'});
                 return;
             }
             // Cursor lock: while the TeX-command box is open, navigation keys
@@ -3022,8 +3045,10 @@
             if (e.key === ' ') {
                 // Space renders nothing in math, but it lets the cursor out
                 // of a script block (or closes an open TeX-command box).
+                // Neutral 'release' like Enter: the pump decides which lock
+                // is live at dequeue time.
                 e.preventDefault();
-                enqueue(script.awaiting ? {type: 'script-exit'} : {type: 'macro-end'});
+                enqueue({type: 'release'});
                 return;
             }
             if (e.key === '\\') { // TeX command placeholder trigger
