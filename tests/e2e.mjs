@@ -1431,6 +1431,46 @@ await page.keyboard.press('Escape');
 await new Promise((r) => setTimeout(r, 400));
 console.log('    macro box: \\sqr + Delete → \\sqr (no-op), Backspace → \\sq ✓');
 
+console.log('65. toolbox tool LABELS show the placeholder as □, never literal brackets');
+// the upstream Tool constructor rendered a label's blank marker as a
+// literal <mn>[]</mn> (sin [], tan [], f([]), log_[] [], e^[] …); the
+// patch swaps it for the same ◻ box the slate uses — brackets stay
+// functional math symbols, the box is the unified fill-in affordance.
+await page.waitForFunction(() => {
+    const panels = [...document.querySelectorAll('#mathslate-editor .yui3-tabview-panel')];
+    if (!panels.length || !panels[0].querySelector('mjx-container')) { return false; }
+    let brackets = 0, boxes = 0;
+    panels.forEach((p) => {
+        p.querySelectorAll('mjx-mn, mjx-mo').forEach((n) => {
+            if (n.textContent.trim() === '[]') { brackets++; }
+        });
+        p.querySelectorAll('mjx-mo').forEach((n) => { if (n.textContent.includes('\u25FB')) { boxes++; } });
+    });
+    return brackets === 0 && boxes > 50;
+}, null, { timeout: 30000 });
+console.log('    zero "[]" placeholder labels across all tool tabs; box glyphs rendered ✓');
+// and inserting the tool still lands the real blank on the slate (the
+// tool's stored json keeps the raw marker — only the label is display-side)
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[4].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(800);
+const handle65 = await page.evaluateHandle(() => {
+    const hs = [...document.querySelectorAll('#mathslate-editor .yui3-tabview-panel .yui3-dd-draggable')];
+    return hs.find((h) => {
+        const span = h.querySelector('span[title]') || h;
+        return (span.title || '').includes('\u25FB') && h.getBoundingClientRect().width > 0;
+    });
+});
+await handle65.asElement().click();
+await page.waitForTimeout(1000);
+const mml65 = await page.$eval('#mathslate-editor #canvas', (el) => el.innerHTML);
+if (!mml65.includes('blank')) { throw new Error('tool insert must land a live blank box on the slate'); }
+console.log('    clicking a placeholder tool lands a live blank box on the slate ✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

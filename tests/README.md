@@ -82,7 +82,12 @@ caret and the focus survives (`\frac{12}{}` `←` `Del` → `\frac{1}{}`, then
 without ever collapsing the block (`x^{23}` `←` `Del` → `x^2`, `Space`
 exits); and the open macro box ignores it (its text caret sits at the
 name's end: `\sqr` `Del` → `\sqr`, `Backspace` → `\sq`).
-64 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the toolbox's own placeholder display: every tool
+label across all tabs renders its blank marker as the visual box
+(`sin □`, `f(□)`, `log_□ □`, `e^□` … — zero literal `[]` labels), and
+clicking such a tool still lands a live blank box on the slate (only the
+label is display-side; the stored tool json keeps the raw marker).
+65 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium
