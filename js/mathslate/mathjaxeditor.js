@@ -263,6 +263,13 @@ NS.MathJaxEditor = function(id) {
                 var dragTarget = e.drag.get('node').get('id');
                 if (e.drag.get('data')) {
                     se.insertSnippet(m[1].id, se.createItem(e.drag.get('data')));
+                    // Standalone app (documented patch): after a toolbox
+                    // drop, let the host focus the inserted structure's
+                    // first placeholder box (no-op when the host app does
+                    // not listen; see armBoxAfterInsert in js/app.js).
+                    if (window.__mathslateAfterToolInsert) {
+                        window.__mathslateAfterToolInsert(e.drag.get('data'));
+                    }
                 }
                 else if (dragTarget !== m[1].id && se.isItem(dragTarget) && !preview.one('#' + dragTarget).one('#' + m[1].id)) {
                     se.insertSnippet(e.drop.get('node').get('id'), se.removeSnippet(dragTarget));

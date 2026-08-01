@@ -804,6 +804,18 @@
             pumpInput();
             return;
         }
+        if (evt.type === 'tab') { // Tab / Shift+Tab: cycle the empty boxes
+            if (macroState.active) { // close the box first, then re-run
+                inputQueue.unshift({type: 'tab', value: evt.value});
+                inputQueue.unshift({type: 'macro-end'});
+                pumpInput();
+                return;
+            }
+            inputQueue.shift();
+            inputBusy = true; // cycleBlank's async arming resumes the pump
+            cycleBlank(evt.value);
+            return;
+        }
         // 'script' trigger (^, _ or /)
         inputQueue.shift();
         // ^ _ / pressed while the caret sits MID-SLOT inside a locked
@@ -891,9 +903,11 @@
         // placeholder of a just-cleared slate): they linger in the DOM
         // until MathJax re-renders and must never be clicked as the box.
         var staleBlanks = blankIds();
+        armSuppress++;
         mje.clear();
         doc.forEach(function (item) { mje.addMath(JSON.stringify(item)); });
         mje.addMath(JSON.stringify(node));
+        armSuppress--;
         modelBlocks = doc.length + 1; // base popped, node pushed: net zero
         script.awaiting = true;
         script.armed = false;
@@ -1395,6 +1409,106 @@
         }
         caret.gap = Math.max(0, Math.min(caret.gap + dir, modelBlocks));
         refreshCaret();
+    }
+
+    /* Tab / Shift+Tab — cycle the cursor through the slate's EMPTY boxes
+     * (placeholder arguments and the slots' own trailing boxes) in the
+     * preview's pre-order — i.e. document order — wrapping around at both
+     * ends. The reference is the box the cursor already owns (an armed
+     * selection or the focused slot's socket); from a free caret the
+     * nearest box after/before its block is taken. The arm is a
+     * user-facing shim click, so filling the box plants the durable slot
+     * focus exactly as if it had been clicked by hand.
+     */
+    function cycleBlank(dir) {
+        // All box/caret bookkeeping is DOM- or model-derived: only read it
+        // once the render queue has drained, or an in-flight rekey hands us
+        // a half-updated box list (the "second Tab does nothing" report).
+        pollUntil(queueQuiet, function () {
+            var total = blankIds().length;
+            if (!total) {
+                status('No empty placeholder boxes to move to.');
+                resumeInput();
+                return;
+            }
+            var ref = -1;
+            if (hasSlateSelection() && selectedNodeIsBlank()) {
+                ref = macroSlotIndex(); // the armed box is the reference
+            } else if (slotFocus.active && slotFocus.boxIdx >= 0) {
+                ref = slotFocus.boxIdx; // the focused slot's socket box
+            }
+            if (script.awaiting) { cancelScript(); } // Tab leaves a lock/arm
+            if (ref >= 0 && total === 1) { resumeInput(); return; } // its only box already has the cursor
+            deselectSlate(); // heal rule: clear selections before clear()s
+            // The trailing box dies with the focus: strip the LEFT slot's
+            // socket before indexing, then adjust every index derived from
+            // the pre-strip list (the stripped position shifts everything
+            // after it down by one).
+            var stripped = -1;
+            if (slotFocus.active) {
+                var oldItems = topItems();
+                var oldArr = resolveSlotArr(oldItems);
+                if (oldArr && oldArr.length > 1 && isBlankNode(oldArr[oldArr.length - 1])) {
+                    stripped = slotFocus.boxIdx;
+                    stripSlotAnchorBox(oldArr);
+                    rebuildSlate(oldItems);
+                }
+                clearSlotFocus();
+            }
+            if (stripped >= 0) { total--; }
+            if (total <= 0) { resumeInput(); return; } // the socket was the only box
+            var target = -1;
+            if (ref >= 0) {
+                if (ref === stripped) { // the reference vanished with the strip
+                    target = (dir > 0 ? stripped : stripped - 1 + total) % total;
+                } else {
+                    var adjRef = (stripped >= 0 && stripped < ref) ? ref - 1 : ref;
+                    target = (adjRef + dir + total) % total;
+                }
+            } else {
+                target = blankNearCaret(dir);
+            }
+            if (target < 0 || target >= total) { resumeInput(); return; }
+            pollUntil(function () {
+                if (!queueQuiet()) { return false; }
+                var ids = blankIds();
+                return ids.length === total && !!findShim(ids[target]);
+            }, function () {
+                var ids = blankIds();
+                var shim = findShim(ids[target]);
+                if (shim) { shim.click(); } // user-facing: not a programmatic arm
+                pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
+            }, 40, resumeInput);
+        }, 40, resumeInput);
+    }
+
+    // First/last empty box after/before the top-level caret, in blankIds()
+    // (pre-order) index space, wrapping around both ends. -1 when the JSON
+    // shows none (e.g. only the empty slate's decoy box, which topItems()
+    // filters out — there is nothing meaningful to jump to then anyway).
+    function blankNearCaret(dir) {
+        var items = topItems();
+        var gap = Math.min(Math.max(caret.gap, 0), items.length);
+        var seen = 0, firstGlobal = -1, lastGlobal = -1, nextAt = -1, prev = -1;
+        for (var bi = 0; bi < items.length; bi++) {
+            var node = items[bi];
+            if (typeof node === 'string') {
+                try { node = JSON.parse(node); } catch (e) { node = null; }
+            }
+            var first = -1, last = -1;
+            (function scan(n) {
+                if (n === '[]') { if (first === -1) { first = seen; } last = seen; seen++; return; }
+                if (Array.isArray(n) && Array.isArray(n[2])) { n[2].forEach(scan); }
+            })(node);
+            if (first !== -1) {
+                if (firstGlobal === -1) { firstGlobal = first; }
+                lastGlobal = last;
+                if (bi >= gap && nextAt === -1) { nextAt = first; }
+                if (bi < gap) { prev = last; }
+            }
+        }
+        if (dir > 0) { return nextAt !== -1 ? nextAt : firstGlobal; }
+        return prev !== -1 ? prev : lastGlobal;
     }
 
     /* ---------------- TeX-command macro mode (the backslash key) ---------
@@ -2341,7 +2455,9 @@
     // exactly as if the tool had been dragged in and clicked.
     function insertStructure(job, gen) {
         var staleBlanks = blankIds();
+        armSuppress++;
         editor.mje.addMath(JSON.stringify(job.json));
+        armSuppress--;
         modelBlocks++;
         pollUntil(function () {
             if (macroState.gen !== gen) { return true; } // slate wiped meanwhile
@@ -2391,6 +2507,55 @@
     var mjeAddCount = 0;
     var appRebuild = 0;
 
+    // Insertion paths that arm their OWN cursor box (the script lock's
+    // argument, the ARG_MACROS conversion) must not trigger the generic
+    // first-placeholder arm — each wraps its writes in this counter.
+    var armSuppress = 0;
+
+    // FEATURE: inserting a structure whose JSON carries blank placeholders
+    // (a toolbox structure, clicked or — via the documented drop:hit hook —
+    // dragged in, or a converted TeX-tab structure) focuses the FIRST
+    // empty box as the cursor instead of parking at the block's end: the
+    // fill order of a multi-placeholder structure becomes left-to-right,
+    // and the Tab key (cycleBlank) takes it from there. Mirrors
+    // insertStructure's arm: fresh-blank ids prove the render; the arm is
+    // programmatic, so the fill release keeps the established semantics.
+    function armBoxAfterInsert(json) {
+        if (armSuppress || appRebuild || macroCapture) { return; }
+        if (!editor || !editor.mje) { return; }
+        if (macroState.active || script.awaiting) { return; } // own arms win
+        if (typeof json !== 'string' || json.indexOf('"[]"') === -1) { return; }
+        if (inputBusy || inputQueue.length) { return; } // a live flow owns the cursor
+        var staleBlanks = blankIds(); // preview DOM still pre-insert here
+        inputBusy = true; // the arm window holds the pump, then resumes it
+        pollUntil(function () {
+            if (!queueQuiet()) { return false; }
+            var ids = blankIds().filter(function (id) {
+                return staleBlanks.indexOf(id) === -1 && findShim(id);
+            });
+            return ids.length > 0;
+        }, function () {
+            var ids = blankIds().filter(function (id) {
+                return staleBlanks.indexOf(id) === -1 && findShim(id);
+            });
+            var shim = ids.length ? findShim(ids[0]) : null;
+            if (shim) {
+                armProgrammatic++;
+                programmaticArmIdx = blankIds().indexOf(ids[0]);
+                // NO deselect here: its canvas click would schedule a
+                // re-render, rebuilding the shim overlay and detaching the
+                // very node the next click targets.
+                shim.click(); // select the FIRST empty box as the cursor
+                pollUntil(hasSlateSelection, function () {
+                    armProgrammatic--;
+                    resumeInput();
+                }, 40, function () { armProgrammatic--; resumeInput(); });
+            } else {
+                resumeInput();
+            }
+        }, 40, resumeInput); // no fresh box ever rendered → just continue
+    }
+
     // In-slot macro conversion: parseTeXNodeInSlot sets {name} before
     // driving the TeX tool; the tool's resulting addMath call is then
     // intercepted and spliced into the slot in place of the macro box,
@@ -2416,10 +2581,16 @@
                 }
                 return; // NOT routed through the core: it belongs in the slot
             }
-            return origAdd.apply(this, arguments);
+            var result = origAdd.apply(this, arguments);
+            armBoxAfterInsert(json); // focus the first empty placeholder
+            return result;
         };
         wrapped.__counted = true;
         mje.addMath = wrapped;
+        // Toolbox DRAG-DROPS bypass mje.addMath (the core's drop:hit calls
+        // se.insertSnippet directly): the documented core hook lands the
+        // same first-placeholder arm for them.
+        window.__mathslateAfterToolInsert = armBoxAfterInsert;
     }
 
     function addsCount() {
@@ -2562,6 +2733,14 @@
 
             var mje = editor.mje;
 
+            if (e.key === 'Tab') {
+                // Cycle empty placeholder boxes (Shift+Tab backwards) —
+                // always swallowed: the slate owns the cursor, not the
+                // browser's focus traversal.
+                e.preventDefault();
+                enqueue({type: 'tab', value: e.shiftKey ? -1 : 1});
+                return;
+            }
             if (e.key === 'Backspace') {
                 e.preventDefault();
                 enqueue({type: 'backspace'}); // pump decides macro vs top-level

@@ -123,7 +123,14 @@ click-focused box fill (where the slot path is buried under the blank
 wrapper mrows the fill leaves behind), and for a structure base (an
 empty `\sqrt{}` numerator stays byte-identical while the caret anchors
 after it).
-69 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins placeholder-first insertion and Tab navigation: a
+fraction tool click arms the FIRST empty box (the fill lands in the
+numerator), `Tab` moves on to the denominator, `Shift+Tab` wraps
+backwards from the first box to the last, a single-box `Tab` is a no-op
+that leaves typing in the slot, `Tab` with no empty boxes does not
+disturb a script lock, and `Tab`/`Shift+Tab` cycle across a mixed slate
+(fraction boxes ↔ a superscript argument, wrapping around the end).
+70 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

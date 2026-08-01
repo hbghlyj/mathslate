@@ -158,6 +158,20 @@ block is still locked and after clicking into a box of a finished
 fraction. (A bare base numerator is wrapped in an invisible `mrow` so
 the caret has a socket — TeX and rendering are unchanged.)
 
+**Placeholder-first insertion.** Dropping a structure onto the slate
+from the toolbox — by click or by drag — puts the cursor straight into
+the structure's **first** empty placeholder box instead of parking it at
+the block's end, so a `\frac{□}{□}` fills numerator-then-denominator
+without any clicking between. Typed `\frac`-style commands that need
+arguments behave the same way (and always did).
+
+**Tab navigation.** `Tab` moves the cursor to the next empty box in the
+expression — placeholder arguments *and* the slots' own trailing □
+boxes — in document order, wrapping around at the end; `Shift+Tab`
+walks the same cycle backwards (from a free caret it starts at the box
+nearest the caret). With a single empty box it is a no-op, and with none
+it quietly leaves the current lock or caret untouched.
+
 **The blinking caret.** Whenever nothing on the slate is selected and the
 editor has focus, a blinking caret marks the insertion point. It parks at
 the end of the expression by default, and the **`<` / `>` buttons** (next
@@ -231,7 +245,7 @@ The editor core (`js/mathslate/*.js`, `css/styles.css`, `help.html`,
 | File | Change |
 | --- | --- |
 | `js/mathslate/editor.js` | Accepts the tool config as a JS object (`M.tinymce_mathslate.configJSON` from `js/config.js`) in addition to a URL fetched with `Y.io`. Enables `file://` use. Also, toolbox tool *labels* render each blank marker as the same visual box the slate uses (`□`, U+25FB) instead of a literal `[]` pair — brackets are functional math symbols (intervals, matrices), the box is the unified fill-in affordance; the stored tool json keeps the raw marker, so dropping a tool still lands a live blank on the slate (marked `Standalone app (documented patch)`). |
-| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. For the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). And the FIRST canvas render requests inline math instead of `display="block"` (under the app's `displayAlign:'left'` config a display-mode first render left-justified the empty slate's placeholder box at the canvas's bottom-left until the first keystroke re-rendered it centred; marked `Standalone app (documented patch)`). Also, `output('JSON')` cleans the slate by DEEP COPY instead of mutating the live tree: the upstream code deleted ids and swapped blanks for `'[]'` strings on the shared objects, which silently poisoned undo/redo snapshots — a later undo restored the raw markers as literal content (`\frac{1}{[]}` in the buffer, then propagating; marked `Standalone app (documented patch)`). |
+| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. For the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). And the FIRST canvas render requests inline math instead of `display="block"` (under the app's `displayAlign:'left'` config a display-mode first render left-justified the empty slate's placeholder box at the canvas's bottom-left until the first keystroke re-rendered it centred; marked `Standalone app (documented patch)`). After a toolbox drag-drop insert, the drop handler additionally calls the host app's `window.__mathslateAfterToolInsert` hook so the inserted structure's first placeholder box can be focused as the cursor (no-op when the host does not listen; marked `Standalone app (documented patch)`). Also, `output('JSON')` cleans the slate by DEEP COPY instead of mutating the live tree: the upstream code deleted ids and swapped blanks for `'[]'` strings on the shared objects, which silently poisoned undo/redo snapshots — a later undo restored the raw markers as literal content (`\frac{1}{[]}` in the buffer, then propagating; marked `Standalone app (documented patch)`). |
 | `js/mathslate/textool.js` | The TeX tool's input no longer takes DOM focus at construction: the standalone app wants the *workspace* focused at launch, so the first keystrokes land on the slate (marked `Standalone app (documented patch)`). |
 | `js/mathslate/snippeteditor.js` | The `output()`/`preview()` serializers never emit a bare `'[]'` element: inside a snippet tree that string is only ever the internal blank marker, so it must stay a render-level box and can never leak into the TeX text (marked `Standalone app (documented patch)`). |
 | `plugin.js` / `mathslate.html` / `yui/build/*dialogue*` | **Dropped.** The TinyMCE plugin wrapper and Moodle dialogue module are replaced by `js/app.js`, which owns the "document" and the Insert/Copy/Clear actions that used to live on TinyMCE's dialogue buttons. |

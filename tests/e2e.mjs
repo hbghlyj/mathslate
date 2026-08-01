@@ -1723,6 +1723,110 @@ await texIs68('\\frac{\\sqrt{}Y}{b}');
 console.log('    structure base "\\sqrt{}" stays intact, the fill anchors after it →', "\\frac{\\sqrt{}Y}{b} ✓");
 await page.click('#btn-clear-slate');
 
+console.log('70. inserting a structure focuses its first placeholder; Tab / Shift+Tab cycle the empty boxes');
+// step-local helpers (freshSlate68/texIs68 from step 68 are reused)
+async function clickFracTool70() {
+    await page.waitForFunction(() => {
+        const tabs = document.querySelectorAll('#mathslate-editor .yui3-tab');
+        if (tabs.length < 6) { return false; }
+        tabs[5].querySelector('.yui3-tab-label, a').click();
+        return true;
+    }, null, { timeout: 10000 });
+    await page.waitForFunction(() => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        const s = spans.find((x) => x.title === '\\frac{\u25FB}{\u25FB}');
+        if (!s) { return false; }
+        s.closest('.yui3-dd-draggable').click();
+        return true;
+    }, null, { timeout: 10000 });
+}
+const selBlankIdx70 = () => page.evaluate(() => {
+    const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
+    const blanks = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+        .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').map((d) => d.id);
+    return { idx: sel ? blanks.indexOf(sel.id) : -1, count: blanks.length };
+});
+async function waitSelectedBox70() {
+    await page.waitForFunction(() => {
+        const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
+        if (!sel || !sel.id) { return false; }
+        return [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+            .some((d) => d.id === sel.id && !d.querySelector('div') && d.textContent.trim() === '');
+    }, null, { timeout: 10000 });
+}
+
+// 1) toolbox structure insert arms the FIRST empty box as the cursor
+await freshSlate68();
+await clickFracTool70();
+await texIs68('\\frac{}{}');
+await waitSelectedBox70();
+let info70 = await selBlankIdx70();
+if (info70.idx !== 0 || info70.count !== 2) {
+    throw new Error('fraction insert must arm the numerator box first (got idx ' + info70.idx + ' of ' + info70.count + ')');
+}
+await page.keyboard.type('1');
+await texIs68('\\frac{1}{}');
+console.log('    fraction tool click → numerator box armed; the fill landed inside ✓');
+
+// 2) Tab moves to the next empty box (denominator)
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('2');
+await texIs68('\\frac{1}{2}');
+console.log('    Tab → denominator box armed; fill →', "\\frac{1}{2} ✓");
+
+// 3) Shift+Tab wraps backwards (first box → last box)
+await freshSlate68();
+await clickFracTool70();
+await texIs68('\\frac{}{}');
+await waitSelectedBox70();
+await page.keyboard.type('1');
+await texIs68('\\frac{1}{}');
+await page.keyboard.press('Shift+Tab');
+await waitSelectedBox70();
+await page.keyboard.type('z');
+await texIs68('\\frac{1}{z}');
+console.log('    Shift+Tab wrapped backwards to the denominator box →', "\\frac{1}{z} ✓");
+
+// 4) single participating box: Tab is a no-op and typing stays in the slot
+await page.keyboard.press('Tab');
+await page.waitForTimeout(600);
+await page.keyboard.type('y');
+await texIs68('\\frac{1}{zy}');
+console.log('    single-box Tab no-op; typing continued inside the slot →', "\\frac{1}{zy} ✓");
+
+// 5) no empty boxes at all: Tab must not disturb a script lock
+await freshSlate68();
+await page.keyboard.type('a^b');
+await texIs68('a^b');
+await page.keyboard.press('Tab');
+await page.waitForTimeout(600);
+await page.keyboard.type('c');
+await texIs68('a^{bc}');
+console.log('    Tab without boxes is inert, the lock survived →', "a^{bc} ✓");
+
+// 6) across structures: Tab wraps around the slate; Shift+Tab goes back
+await freshSlate68();
+await clickFracTool70();
+await texIs68('\\frac{}{}');
+await waitSelectedBox70();
+await page.keyboard.type('1');
+await texIs68('\\frac{1}{}');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+await page.keyboard.type('x^');
+await texIs68('\\frac{1}{}x^{}');
+await page.keyboard.press('Tab'); // from the superscript box → first empty box (denominator)
+await waitSelectedBox70();
+await page.keyboard.type('3');
+await texIs68('\\frac{1}{3}x^{}');
+await page.keyboard.press('Shift+Tab'); // back to the superscript argument
+await waitSelectedBox70();
+await page.keyboard.type('2');
+await texIs68('\\frac{1}{3}x^2');
+console.log('    Tab/Shift+Tab cycled fraction boxes ↔ script argument →', "\\frac{1}{3}x^2 ✓");
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {
