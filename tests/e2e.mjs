@@ -1827,6 +1827,172 @@ await texIs68('\\frac{1}{3}x^2');
 console.log('    Tab/Shift+Tab cycled fraction boxes ↔ script argument →', "\\frac{1}{3}x^2 ✓");
 await page.click('#btn-clear-slate');
 
+console.log('71. matrix tool asks for n×m dimensions; cells tab through row-major; size is remembered');
+// step-local helpers (freshSlate68/texIs68/waitSelectedBox70/selBlankIdx70 are reused)
+async function clickMatrixTool71() {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[5].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        const s = spans.find((x) => x.title.indexOf('matrix') !== -1);
+        s.closest('.yui3-dd-draggable').click();
+    });
+    await page.waitForFunction(() => !document.getElementById('matrix-dialog-backdrop').hidden, null, { timeout: 10000 });
+}
+async function setDims71(r, c) {
+    await page.$eval('#matrix-rows', (el, v) => { el.value = v; }, String(r));
+    await page.$eval('#matrix-cols', (el, v) => { el.value = v; }, String(c));
+}
+const dialogHidden71 = () => page.evaluate(() => document.getElementById('matrix-dialog-backdrop').hidden);
+const dialogDims71 = () => Promise.all([
+    page.$eval('#matrix-rows', (e) => e.value),
+    page.$eval('#matrix-cols', (e) => e.value)
+]);
+
+// 1) the click opens the dialog with 2×2 defaults and swallows the insert
+await freshSlate68();
+await clickMatrixTool71();
+let dims71 = await dialogDims71();
+if (dims71[0] !== '2' || dims71[1] !== '2') { throw new Error('matrix dialog must default to 2×2, got ' + dims71.join('×')); }
+await texIs68(''); // the tool insert waits for the dialog
+await setDims71(3, 3);
+await page.click('#matrix-ok');
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on Insert'); }
+await texIs68('\\matrix{&&\\\\&&\\\\&&}');
+await waitSelectedBox70();
+let minfo71 = await selBlankIdx70();
+if (minfo71.idx !== 0 || minfo71.count !== 9) {
+    throw new Error('3×3 matrix must arm the first of 9 cell boxes (got ' + minfo71.idx + ' of ' + minfo71.count + ')');
+}
+const status71 = await page.$eval('#status-line', (el) => el.textContent);
+if (status71.indexOf('3 × 3 matrix') === -1) { throw new Error('status must announce the 3 × 3 matrix, got: ' + status71); }
+console.log('    dialog 3×3 → 9 blank cells, the first armed as the cursor ✓');
+
+// 2) Shift+Tab wraps to the LAST cell; Tab wraps back and fills row-major
+await page.keyboard.press('Shift+Tab');
+await waitSelectedBox70();
+minfo71 = await selBlankIdx70();
+if (minfo71.idx !== 8 || minfo71.count !== 9) {
+    throw new Error('Shift+Tab must wrap to the last cell (got idx ' + minfo71.idx + ' of ' + minfo71.count + ')');
+}
+await page.keyboard.type('z');
+await texIs68('\\matrix{&&\\\\&&\\\\&&z}');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('a');
+await texIs68('\\matrix{a&&\\\\&&\\\\&&z}');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await texIs68('\\matrix{a&b&\\\\&&\\\\&&z}');
+console.log('    Shift+Tab/Tab wrapped around the grid; fills landed row-major →', "\\matrix{a&b&\\\\&&\\\\&&z} ✓");
+
+// 3) cancel paths leave no trace — Cancel button, Escape, backdrop click
+await freshSlate68();
+await clickMatrixTool71();
+await page.click('#matrix-cancel');
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on Cancel'); }
+await texIs68('');
+await page.keyboard.type('q'); // the slate owns the keys again right away
+await texIs68('q');
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Escape');
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on Escape'); }
+await texIs68('');
+await clickMatrixTool71();
+await page.mouse.click(6, 6); // backdrop click-away
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on a backdrop click'); }
+await texIs68('');
+console.log('    Cancel / Escape / backdrop-click all dismiss without inserting; typing resumed ✓');
+
+// 4) the chosen size is remembered; Enter confirms — a 2×1 matrix
+await clickMatrixTool71();
+dims71 = await dialogDims71();
+if (dims71[0] !== '3' || dims71[1] !== '3') { throw new Error('matrix dialog must remember 3×3, got ' + dims71.join('×')); }
+await setDims71(2, 1);
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{\\\\}');
+await waitSelectedBox70();
+await page.keyboard.type('a');
+await texIs68('\\matrix{a\\\\}');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await texIs68('\\matrix{a\\\\b}');
+console.log('    remembered 3×3 default, Enter-confirm, 2×1 fill →', "\\matrix{a\\\\b} ✓");
+
+// 5) dimensions clamp to 1…10 (0×99 → 1×10)
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(0, 99);
+await page.click('#matrix-ok');
+await texIs68('\\matrix{&&&&&&&&&}');
+await waitSelectedBox70();
+minfo71 = await selBlankIdx70();
+if (minfo71.count !== 10) { throw new Error('clamped 1×10 matrix must show 10 cells, got ' + minfo71.count); }
+console.log('    0×99 clamped to a 1×10 grid (10 blank cells) ✓');
+
+// 6) the remembered size drives drag-and-drop (the documented drop hook)
+const hook71 = await page.evaluate(() => {
+    const tpl = JSON.stringify(['mrow', {tex: ['\\matrix{', 0, '}']}, [['mtable', {rowspacing: '4pt', columnspacing: '1em'}, [
+        ['mtr', {}, [['mtd', {}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]],
+        ['mtr', {}, [['mtd', {tex: ['\\\\', 0]}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]]
+    ]]]]);
+    const out = window.__mathslateDropJSON(tpl);
+    const root = out && JSON.parse(out);
+    const count = (n, tag) => !Array.isArray(n) ? 0
+        : (n[0] === tag ? 1 : 0) + (Array.isArray(n[2]) ? n[2].reduce((acc, k) => acc + count(k, tag), 0) : 0);
+    return {
+        rows: root ? count(root, 'mtr') : -1,
+        cells: root ? count(root, 'mtd') : -1,
+        nonMatrix: window.__mathslateDropJSON(JSON.stringify(['mfrac', {tex: ['\\frac{', 0, '}{', 1, '}']}, ['[]', '[]']]))
+    };
+});
+if (hook71.rows !== 1 || hook71.cells !== 10 || hook71.nonMatrix !== null) {
+    throw new Error('drop hook must substitute the remembered 1×10 (got ' + JSON.stringify(hook71) + ')');
+}
+console.log('    __mathslateDropJSON substitutes the remembered 1×10 for drags, ignores other tools ✓');
+
+// 7) the TeX tab's typed \\matrix{…} is NOT the tool: no dialog, normal compile
+await freshSlate68();
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(500);
+await page.evaluate(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    input.value = '\\matrix{x&y\\\\z&w}';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await texIs68('\\matrix{x&y\\\\z&w}');
+if (!(await dialogHidden71())) { throw new Error('a typed TeX \\matrix must not open the size dialog'); }
+console.log('    typed TeX \\matrix{x&y\\\\z&w} compiled normally (no dialog) ✓');
+
+// 8) full circle: 2×2 from the dialog reproduces the legacy template exactly
+await freshSlate68();
+await clickMatrixTool71();
+dims71 = await dialogDims71();
+if (dims71[0] !== '1' || dims71[1] !== '10') { throw new Error('matrix dialog must remember 1×10, got ' + dims71.join('×')); }
+await setDims71(2, 2);
+await page.click('#matrix-ok');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('a');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('c');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('d');
+await texIs68('\\matrix{a&b\\\\c&d}');
+console.log('    dialog 2×2 fills to the legacy', "\\matrix{a&b\\\\c&d} ✓");
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

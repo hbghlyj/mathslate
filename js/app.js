@@ -351,6 +351,7 @@
         wireCaretFocus();
         wireCaretDropGlow();
         wireAddMathCounter();
+        wireMatrixDialog();
         refreshCaret();
         // Keep the TeX read-out in sync with the slate (and re-evaluate the
         // caret: slate-internal selection changes reach us only by polling).
@@ -2563,11 +2564,184 @@
     // conversion detection in parseTeXNodeInSlot works unchanged.
     var macroCapture = null;
 
+    /* ---------------- MATRIX TOOL: n×m dimensions ---------------- *
+     * The config ships ONE static 2×2 mtable template as the matrix
+     * tool. Clicking it (or dropping it on the canvas — both route
+     * through mje.addMath) first opens a small size dialog; the
+     * confirmed rows×columns rebuild the template's own three cell
+     * prototypes (the plain first cell, the '&'-prefixed cells, the
+     * \\-prefixed row openers), so any 1×1…10×10 grid inserts with
+     * exactly the config's markup and TeX shape. The choice is
+     * remembered: the documented drop:hit hook (__mathslateDropJSON in
+     * mathjaxeditor.js) substitutes it on workspace drags, which
+     * cannot pause for a dialog mid-gesture. */
+    var matrixDims = {rows: 2, cols: 2}; // last chosen size
+    var matrixDirect = 0;                // the dialog's own insert is in flight
+    var matrixPending = null;            // template JSON while the dialog is open
+
+    // The matrix tool is recognized by its wrapper's tex SHAPE: the
+    // template emits exactly ["\\matrix{", slot, "}"] — three parts
+    // with a numeric slot index. The TeX tab is NOT matched: typed
+    // "\\matrix{a&b…}" text embeds as ONE string (no slot index), so
+    // that flow is never mistaken for the tool. (A structural compare
+    // against the live config entry would also fail: the toolbox
+    // rewrites its '[]' markers into display boxes at boot.)
+    function isMatrixToolJSON(json) {
+        var node = null;
+        try { node = JSON.parse(json); } catch (e) { return false; }
+        if (!Array.isArray(node) || node[0] !== 'mrow' || !node[1]) { return false; }
+        var tex = node[1].tex;
+        if (!Array.isArray(tex) || tex.length !== 3) { return false; }
+        return tex[0] === '\\matrix{' && tex[1] === 0 && tex[2] === '}'
+            && !!findMtable(node);
+    }
+
+    function findMtable(node) {
+        if (!Array.isArray(node)) { return null; }
+        if (node[0] === 'mtable') { return node; }
+        var kids = node[2];
+        if (Array.isArray(kids)) {
+            for (var i = 0; i < kids.length; i++) {
+                var hit = findMtable(kids[i]);
+                if (hit) { return hit; }
+            }
+        }
+        return null;
+    }
+
+    function texHas(tex, s) {
+        for (var i = 0; tex && i < tex.length; i++) {
+            if (typeof tex[i] === 'string' && tex[i].indexOf(s) !== -1) { return true; }
+        }
+        return false;
+    }
+
+    // Rebuild the tool's JSON at rows×cols by cloning the template's own
+    // three cell prototypes — so attributes, tex pieces and blank markers
+    // stay byte-identical to the config's for every cell of any size.
+    function resizeMatrixJSON(json, rows, cols) {
+        var root = null;
+        try { root = JSON.parse(json); } catch (e) { return null; }
+        var table = findMtable(root);
+        if (!table || !Array.isArray(table[2])) { return null; }
+        var plain = null, amp = null, head = null;
+        table[2].forEach(function (row) {
+            ((row && row[2]) || []).forEach(function (cell) {
+                if (!Array.isArray(cell) || cell[0] !== 'mtd') { return; }
+                var tex = cell[1] && cell[1].tex;
+                if (!tex) { plain = plain || cell; }
+                else if (texHas(tex, '&')) { amp = amp || cell; }
+                else if (texHas(tex, '\\\\')) { head = head || cell; }
+            });
+        });
+        if (!plain || !amp || !head) { return null; }
+        var rowsOut = [];
+        for (var r = 0; r < rows; r++) {
+            var cells = [JSON.parse(JSON.stringify(r === 0 ? plain : head))];
+            for (var c = 1; c < cols; c++) {
+                cells.push(JSON.parse(JSON.stringify(amp)));
+            }
+            rowsOut.push(['mtr', {}, cells]);
+        }
+        table[2] = rowsOut;
+        return JSON.stringify(root);
+    }
+
+    // The size dialog: rows/columns inputs, Insert/Cancel; Enter
+    // confirms, Esc and a backdrop click cancel, Tab is trapped inside.
+    // While it is open (matrixPending set) the slate's key router and
+    // the addMath interception hold off entirely.
+    function matrixEls() {
+        return {backdrop: $('matrix-dialog-backdrop'), rows: $('matrix-rows'),
+                cols: $('matrix-cols'), ok: $('matrix-ok'), cancel: $('matrix-cancel')};
+    }
+
+    function openMatrixDialog(json) {
+        var els = matrixEls();
+        if (!els.backdrop) { return false; }
+        matrixPending = json;
+        els.rows.value = matrixDims.rows;
+        els.cols.value = matrixDims.cols;
+        els.backdrop.hidden = false;
+        els.rows.focus();
+        els.rows.select();
+        return true;
+    }
+
+    function closeMatrixDialog() {
+        var els = matrixEls();
+        if (els.backdrop) { els.backdrop.hidden = true; }
+        matrixPending = null;
+        focusSlate(); // typing belongs on the slate again
+    }
+
+    function confirmMatrix() {
+        var els = matrixEls();
+        var clamp = function (v) {
+            v = parseInt(v, 10);
+            if (isNaN(v)) { v = 2; }
+            return Math.min(10, Math.max(1, v));
+        };
+        var rows = clamp(els.rows.value), cols = clamp(els.cols.value);
+        var json = matrixPending && resizeMatrixJSON(matrixPending, rows, cols);
+        matrixDims = {rows: rows, cols: cols};
+        closeMatrixDialog();
+        if (!json || !editor || !editor.mje) { return; }
+        matrixDirect++;
+        // The wrapped addMath runs un-intercepted now: the insert counts,
+        // the slate renders and the first cell's box arms as the cursor.
+        try { editor.mje.addMath(json); }
+        finally { matrixDirect--; }
+        status('Inserted a ' + rows + ' × ' + cols + ' matrix.');
+    }
+
+    function wireMatrixDialog() {
+        var els = matrixEls();
+        if (!els.backdrop || els.backdrop.__wired) { return; }
+        els.backdrop.__wired = true;
+        els.ok.addEventListener('click', confirmMatrix);
+        els.cancel.addEventListener('click', closeMatrixDialog);
+        els.backdrop.addEventListener('mousedown', function (e) {
+            if (e.target === els.backdrop) { closeMatrixDialog(); } // click-away cancels
+        });
+        els.backdrop.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                confirmMatrix();
+            }
+            else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeMatrixDialog();
+            }
+            else if (e.key === 'Tab') { // trap traversal inside the dialog
+                var order = [els.rows, els.cols, els.ok, els.cancel];
+                var i = order.indexOf(document.activeElement);
+                if (i !== -1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length].focus();
+                }
+            }
+        });
+    }
+
     function wireAddMathCounter() {
         var mje = editor && editor.mje;
         if (!mje || mje.addMath.__counted) { return; }
         var origAdd = mje.addMath;
         var wrapped = function (json) {
+            // The matrix tool asks for its dimensions first — the dialog
+            // owns the eventual insert (confirmMatrix re-enters this
+            // wrapper guarded by matrixDirect). Checked before everything
+            // else: a cancelled dialog must leave no trace, not even the
+            // model-growth counter.
+            if (!appRebuild && !armSuppress && !macroCapture && !matrixDirect
+                && !matrixPending && isMatrixToolJSON(json)) {
+                openMatrixDialog(json);
+                return;
+            }
             if (!appRebuild) { mjeAddCount++; }
             if (macroCapture) {
                 var capName = macroCapture.name;
@@ -2591,6 +2765,13 @@
         // se.insertSnippet directly): the documented core hook lands the
         // same first-placeholder arm for them.
         window.__mathslateAfterToolInsert = armBoxAfterInsert;
+        // …and the drop handler's PRE-insert counterpart: workspace
+        // drags of the matrix tool substitute the size last chosen in
+        // the dialog (a drag cannot pause for a prompt mid-gesture).
+        window.__mathslateDropJSON = function (json) {
+            if (!isMatrixToolJSON(json)) { return null; }
+            return resizeMatrixJSON(json, matrixDims.rows, matrixDims.cols) || null;
+        };
     }
 
     function addsCount() {
@@ -2728,6 +2909,7 @@
     function wireKeyboard() {
         document.addEventListener('keydown', function (e) {
             if (!editor || !editor.mje) { return; }
+            if (matrixPending) { return; } // the matrix size dialog owns the keys
             if (e.ctrlKey || e.metaKey || e.altKey) { return; } // leave shortcuts alone
             if (isFormTarget(e.target)) { return; } // typing in inputs stays there
 

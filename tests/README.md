@@ -130,7 +130,20 @@ backwards from the first box to the last, a single-box `Tab` is a no-op
 that leaves typing in the slot, `Tab` with no empty boxes does not
 disturb a script lock, and `Tab`/`Shift+Tab` cycle across a mixed slate
 (fraction boxes ↔ a superscript argument, wrapping around the end).
-70 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the n×m matrix tool: the toolbox click opens the
+size dialog (2×2 default) instead of inserting; confirming 3×3 renders
+nine blank cells with the first armed as the cursor and the status line
+announcing the size; `Shift+Tab`/`Tab` wrap around the grid and fills
+land cell by cell in row-major order; `Cancel`, `Escape` and a backdrop
+click all dismiss without inserting (typing resumes immediately); the
+chosen size is remembered (the dialog re-opens on it, `Enter` confirms,
+a 2×1 fills as `\matrix{a\\b}`); out-of-range dimensions clamp to
+1…10; the documented drop hook substitutes the remembered size for
+workspace drags and leaves other tools untouched; a TeX-tab-typed
+`\matrix{x&y\\z&w}` compiles normally without ever opening the
+dialog; and a dialog-chosen 2×2 reproduces the legacy template's TeX
+byte for byte.
+71 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

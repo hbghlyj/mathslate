@@ -222,6 +222,87 @@ main {
 
 .app-footer a { color: #3b4a6b; }
 
+/* ---------- matrix size dialog (the matrix tool's n×m chooser) ----------
+ *
+ * The toolbox ships one static 2×2 matrix template; clicking it opens
+ * this dialog for the dimensions (js/app.js openMatrixDialog), and the
+ * confirmed grid is rebuilt from the config template's own cells. The
+ * backdrop carries the `hidden` attribute between uses — the explicit
+ * [hidden] rule beats the flex display below.
+ */
+.matrix-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(39, 48, 67, 0.45);
+}
+
+.matrix-dialog-backdrop[hidden] { display: none; }
+
+.matrix-dialog {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 14px 44px rgba(20, 28, 45, 0.35);
+    padding: 20px 24px 18px;
+    width: 340px;
+    max-width: 92vw;
+}
+
+.matrix-dialog-title {
+    margin: 0 0 6px;
+    font-size: 16px;
+    color: #273043;
+}
+
+.matrix-dialog-hint {
+    margin: 0 0 14px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #68758c;
+}
+
+.matrix-dialog-fields {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.matrix-dialog-fields label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #3b4a6b;
+}
+
+.matrix-dialog-fields input {
+    width: 3.4em;
+    padding: 7px 8px;
+    font-size: 14px;
+    border: 1px solid #b9c2d1;
+    border-radius: 6px;
+    background: #f6f8fb;
+    color: #273043;
+}
+
+.matrix-dialog-fields input:focus {
+    outline: none;
+    border-color: #3b4a6b;
+}
+
+.matrix-dialog-times {
+    font-size: 15px;
+    color: #68758c;
+}
+
+.matrix-dialog-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
 /* ---------- TeX-command placeholder (the "\" key): active-box chrome ----------
  *
  * While the macro box is open, #mathslate-editor carries the

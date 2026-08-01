@@ -262,13 +262,25 @@ NS.MathJaxEditor = function(id) {
             drop.on('drop:hit', function(e) {
                 var dragTarget = e.drag.get('node').get('id');
                 if (e.drag.get('data')) {
-                    se.insertSnippet(m[1].id, se.createItem(e.drag.get('data')));
+                    var dropData = e.drag.get('data');
+                    // Standalone app (documented patch): let the host
+                    // substitute the dropped tool's JSON before the
+                    // insert (no-op when the host does not listen).
+                    // Mathslate's matrix tool inserts workspace drags at
+                    // the size last chosen in its dimension dialog —
+                    // a drag cannot pause for a prompt mid-gesture
+                    // (see resizeMatrixJSON/__mathslateDropJSON in
+                    // js/app.js).
+                    if (window.__mathslateDropJSON) {
+                        dropData = window.__mathslateDropJSON(dropData) || dropData;
+                    }
+                    se.insertSnippet(m[1].id, se.createItem(dropData));
                     // Standalone app (documented patch): after a toolbox
                     // drop, let the host focus the inserted structure's
                     // first placeholder box (no-op when the host app does
                     // not listen; see armBoxAfterInsert in js/app.js).
                     if (window.__mathslateAfterToolInsert) {
-                        window.__mathslateAfterToolInsert(e.drag.get('data'));
+                        window.__mathslateAfterToolInsert(dropData);
                     }
                 }
                 else if (dragTarget !== m[1].id && se.isItem(dragTarget) && !preview.one('#' + dragTarget).one('#' + m[1].id)) {
