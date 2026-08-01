@@ -1520,6 +1520,51 @@ await page.waitForFunction(() => document.getElementById('current-tex').value.re
 await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mjx-c1D504'), null, { timeout: 15000 });
 console.log('    \\mathfrak A tool → slate TeX \\mathfrak A, canvas typesets the Fraktur glyph (U+1D504) ✓');
 
+console.log('67. derivative buttons render their operator glyphs (the invisible-\\partial report)');
+// inherited from the upstream config: the total/partial derivative tools
+// wrapped the glyph in a one-element ARRAY (["mi",{},["d"]] /
+// ["mi",{},["∂"]]) that toMathML silently drops (bare string children of
+// element arrays are skipped), so the buttons rendered as an empty
+// <mjx-mi></mjx-mi> and looked exactly like the plain fraction — and the
+// canvas lost the d/∂ on insertion too. The glyphs are plain string
+// content now.
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[6].querySelector('.yui3-tab-label, a').click();
+});
+await new Promise((r) => setTimeout(r, 800));
+await page.waitForFunction(() => {
+    const panel = document.querySelector('#mathslate-editor .yui3-tab-panel-selected');
+    if (!panel || !panel.querySelector('mjx-container')) { return false; }
+    const spans = [...panel.querySelectorAll('span[title]')];
+    const check = (title) => {
+        const s = spans.find((x) => x.title === title);
+        if (!s) { return false; }
+        const mis = [...s.querySelectorAll('mjx-mi')];
+        // both operator glyphs present and visible (typeset as the italic
+        // forms U+1D451/U+1D715 by MathJax 4 — just require non-empty)
+        return mis.length === 2 && mis.every((m) => m.textContent.trim() !== '');
+    };
+    // the plain fraction label (relations tab) has no mi at all — the
+    // derivative labels must VISIBLY differ from two bare boxes
+    return check('\\frac{d◻}{d◻}') && check('\\frac{\\partial◻}{\\partial◻}');
+}, null, { timeout: 30000 });
+console.log('    d□/d□ and ∂□/∂□ buttons show their operator glyphs (no empty <mjx-mi> left) ✓');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.evaluate(() => {
+    const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+    spans.find((x) => x.title.includes('partial')).closest('.yui3-dd-draggable').click();
+});
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{\\partial}{\\partial}', null, { timeout: 15000 });
+// MathJax 4 typesets ∂ as the italic mathematical partial U+1D715 —
+// tex2chtml of the real \frac{\partial}{\partial} does exactly the same
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c1D715').length === 2
+    && ![...document.querySelectorAll('#mathslate-editor #canvas mjx-mi')].some((m) => !m.textContent.trim()),
+    null, { timeout: 15000 });
+console.log('    insertion renders both ∂ glyphs on the slate (U+1D715, same as real \\frac{\\partial}{\\partial}) ✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

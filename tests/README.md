@@ -96,7 +96,14 @@ in the TeX read-out with the true calligraphic alphabet (the
 `data-mjx-variant="-tex-calligraphic"` internal variant — what MathJax 4's
 own TeX jax emits for `\mathcal{A}`, distinct from plain `script`) / the
 Fraktur glyph (U+1D504) typeset on the canvas.
-66 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the derivative buttons: the total/partial derivative
+tools must actually SHOW their operator glyphs in the label (two non-empty
+mi's — `d□`/`d□`, `∂□`/`∂□` — visibly distinct from the plain fraction's
+bare boxes; the inherited upstream config wrapped the glyphs in a
+one-element array that toMathML silently dropped) and inserting the
+partial derivative typesets both ∂ glyphs on the slate (U+1D715, exactly
+what MathJax 4 does for a real `\frac{\partial}{\partial}`).
+67 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

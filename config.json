@@ -273,12 +273,12 @@
     {"label":"<span title='Calculus'><math><mo>&#x222B;</mo><mi mathvariant='normal'>&#x2207;</mi><mi>f</mi></math></span>",
         "tools":[
             ["mfrac",{"tex":["\\frac{",0,"}{",1,"}"]},[
-                 ["mrow",{},[["mi",{},["d"]], "[]" ]],
-                 ["mrow",{},[["mi",{},["d"]], "[]" ]]
+                 ["mrow",{},[["mi",{},"d"], "[]" ]],
+                 ["mrow",{},[["mi",{},"d"], "[]" ]]
             ]],
             ["mfrac",{"tex":["\\frac{",0,"}{",1,"}"]},[
-                 ["mrow",{"tex":["\\partial",1]},[["mi",{},["\u2202"]], "[]" ]],
-                 ["mrow",{"tex":["\\partial",1]},[["mi",{},["\u2202"]], "[]" ]]
+                 ["mrow",{"tex":["\\partial",1]},[["mi",{},"\u2202"], "[]" ]],
+                 ["mrow",{"tex":["\\partial",1]},[["mi",{},"\u2202"], "[]" ]]
             ]],
             ["mi",{"tex":["\\nabla "],"mathvariant": "normal"},"\u2207"],
             ["munderover",{"tex":["\\sum_{",1,"}^{",2,"} "]},[["mo",{},"&sum;"],"[]","[]"]],
