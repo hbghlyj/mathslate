@@ -185,6 +185,15 @@ NS.MathJaxEditor = function(id) {
         se.forEach(function(m) {
             var node = ddnodes.one('#' + m[1].id);
             if (!node) {return;}
+            // MathJax 4 port (documented patch): the drop shim is built
+            // from se.preview() (every id'd descendant), while the preview
+            // div is se.preview('tex') — a templated element whose child
+            // list grew past slot 0 (a typed multi-token matrix cell)
+            // emits only the referenced child there, so the shim can hold
+            // an id the preview lacks. Skip the orphan instead of failing
+            // the whole queue task, exactly like the missing-shim guard
+            // above does.
+            if (!preview.one('#' + m[1].id)) { return; }
             node.setAttribute('title', preview.one('#' + m[1].id).getHTML().replace(/<div *[^>]*>|<\/div>|<br>/g, ''));
             node.handleClick = function(e) {
                 var selectedNode = ddnodes.one('#' + se.getSelected());

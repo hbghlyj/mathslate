@@ -2164,6 +2164,22 @@
         if (typeof node === 'string') { node = JSON.parse(node); }
         if (!Array.isArray(node)) { return null; }
         var PP = P.slice(0, P.length - 4);
+        // The candidate parent slot is the children array of the element
+        // found at PP minus its last entry. A peel is only legal when that
+        // element owns CONTENT (an mrow's grouping, an msqrt's radicand,
+        // an mtd's cell); an mtable/mtr's children are row/cell STRUCTURE,
+        // never a caret target — parking the caret there pushed a box
+        // into the rows of a matrix, which MathJax renders as a phantom
+        // extra row (the "□ row appears on ← out of a cell" report).
+        // Refuse: the caller then releases the caret to the slate beside
+        // the whole grid.
+        var owner = node;
+        for (var s2 = 0; s2 < PP.length - 1; s2++) {
+            owner = owner[PP[s2]];
+            if (!Array.isArray(owner)) { owner = null; break; }
+        }
+        if (owner && (owner[0] === 'mtable' || owner[0] === 'mtr'
+            || owner[0] === 'mlabeledtr')) { return null; }
         for (var s = 0; s < PP.length; s++) {
             node = node[PP[s]];
             if (!Array.isArray(node)) { return null; }
@@ -2181,16 +2197,18 @@
         return {path: PP, arr: node, before: before};
     }
 
-    // Intra-FRACTION navigation: the focused slot's SIBLING slot in the
-    // same mfrac (numerator ↔ denominator), or null when the press points
-    // past the fraction's own outer edge. The slot's path locates it
-    // positionally — a slot path always ends […, 2, k, 2]: the structure
-    // node, its children array, the slot's mrow at index k, then the
-    // content array (the same discipline parentSlotOf uses). A bare-token
-    // sibling (the / trigger leaves the numerator as the plain base
-    // snippet) is WRAPPED into the slot convention on the fly: mrow
-    // grouping renders invisibly, so the TeX and the canvas stay
-    // identical while the caret gains a socket to anchor to.
+    // Intra-STRUCTURE navigation: the focused slot's SIBLING slot in the
+    // same mfrac (numerator ↔ denominator) or mtable (the next cell in
+    // row-major order), or null when the press points past the structure's
+    // own outer edge. The slot's path locates it positionally — a slot
+    // path always ends […, 2, k, 2]: the structure node, its children
+    // array, the slot's mrow at index k, then the content array (the same
+    // discipline parentSlotOf uses). A bare-token sibling (the / trigger
+    // leaves the numerator as the plain base snippet) is WRAPPED into the
+    // slot convention on the fly: mrow grouping renders invisibly, so the
+    // TeX and the canvas stay identical while the caret gains a socket to
+    // anchor to. Matrix cells need no wrap: an mtd's children are already
+    // a content array.
     function fracSiblingSlot(items, navArr, dir) {
         var P = unwrapSlotPath(items, slotFocus.path);
         if (!P || P.length < 3) { return null; }
@@ -2203,17 +2221,67 @@
             if (!Array.isArray(structure)) { return null; }
             structure = structure[PP[s]];
         }
-        if (!Array.isArray(structure) || structure[0] !== 'mfrac'
-            || !Array.isArray(structure[2])) { return null; }
+        if (!Array.isArray(structure) || !Array.isArray(structure[2])) { return null; }
         var wrap = structure[2][k];
         if (!Array.isArray(wrap) || !pathOfArray(wrap, navArr, [])) { return null; }
-        var j = k + dir;
-        if (j < 0 || j >= structure[2].length) { return null; } // the fraction's outer edge
-        if (!(Array.isArray(structure[2][j]) && structure[2][j][0] === 'mrow'
-            && Array.isArray(structure[2][j][2]))) {
-            structure[2][j] = ['mrow', {}, [structure[2][j]]]; // wrap the bare base
+        if (structure[0] === 'mfrac') {
+            var j = k + dir;
+            if (j < 0 || j >= structure[2].length) { return null; } // the fraction's outer edge
+            if (!(Array.isArray(structure[2][j]) && structure[2][j][0] === 'mrow'
+                && Array.isArray(structure[2][j][2]))) {
+                structure[2][j] = ['mrow', {}, [structure[2][j]]]; // wrap the bare base
+            }
+            return {path: PP.concat([2, j, 2]), arr: structure[2][j][2]};
         }
-        return {path: PP.concat([2, j, 2]), arr: structure[2][j][2]};
+        if (structure[0] === 'mtr' || structure[0] === 'mlabeledtr') {
+            // MATRIX cells: the same-row neighbour, else the row above's
+            // LAST cell (for ←) / the row below's FIRST cell (for →) —
+            // one continuous row-major walk, mirroring the Tab cycle.
+            // Past the grid's own edge → null: the peel is refused for
+            // table contexts (parentSlotOf's owner guard) and the caret
+            // exits the whole matrix at slate level.
+            var jj = k + dir;
+            if (jj >= 0 && jj < structure[2].length) {
+                return mtrCellSlot(structure[2][jj], PP.concat([2, jj]));
+            }
+            var table = items[slotFocus.top];
+            if (typeof table === 'string') { table = JSON.parse(table); }
+            var tp = PP.slice(0, PP.length - 2); // the mtr path minus [2, r]
+            for (var s2 = 0; s2 < tp.length; s2++) {
+                if (!Array.isArray(table)) { return null; }
+                table = table[tp[s2]];
+            }
+            if (!Array.isArray(table) || table[0] !== 'mtable'
+                || !Array.isArray(table[2])) { return null; }
+            var rr = PP[PP.length - 1] + dir;
+            if (rr < 0 || rr >= table[2].length) { return null; } // the grid's outer edge
+            var trow = table[2][rr];
+            if (!Array.isArray(trow) || !Array.isArray(trow[2]) || !trow[2].length) { return null; }
+            var jc = dir === 1 ? 0 : trow[2].length - 1;
+            if (!Array.isArray(trow[2][jc])) { return null; }
+            return mtrCellSlot(trow[2][jc], tp.concat([2, rr, 2, jc]));
+        }
+        return null;
+    }
+
+    // A matrix cell's LIVE slot. The mtd's own child list is the
+    // templated element's slot-0 — the TeX serializer reads ONLY that
+    // child there — so continuation content must live one group deeper,
+    // inside the tex-less mrow the cell template wraps it in (the same
+    // discipline the fraction's slot mrows follow, and why '\frac{29}'
+    // keeps serializing). Descend that single-child, tex-less mrow
+    // chain to the array fills and the caret actually belong in; the
+    // returned path mirrors the descent.
+    function mtrCellSlot(mtd, basePath) {
+        var el = mtd, p = basePath;
+        while (Array.isArray(el[2]) && el[2].length === 1
+            && Array.isArray(el[2][0]) && el[2][0][0] === 'mrow'
+            && !(el[2][0][1] && el[2][0][1].tex)) {
+            p = p.concat([2, 0]);
+            el = el[2][0];
+        }
+        if (!Array.isArray(el) || !Array.isArray(el[2])) { return null; }
+        return {path: p.concat([2]), arr: el[2]};
     }
 
     // ← past the start of a LOCKED fraction's denominator (moveCaret's

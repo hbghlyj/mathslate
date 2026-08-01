@@ -164,7 +164,19 @@ as `\frac{29}{\beta}`), and the final `←` past the numerator's start
 exits with every placeholder gone. A filled denominator
 (`3/\delta` `Enter` then `7`) also keeps exactly one socket while
 typing and sheds it on `→`.
-73 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the matrix phantom-row report and the grid's arrow
+navigation: `1` in the first cell, caret before it, then `←` exits
+before the matrix with the canvas keeping exactly two rows (the bug
+pushed the caret's placeholder into the table's row list, rendering a
+third row); `→` walks the cells row-major `1,2,3,4` and out past the
+last cell; `←` from a cell's start crosses to the row above's last
+cell (fill lands as `\matrix{1&29\\3&}`); `←` from the freshly armed
+EMPTY first cell exits with all four placeholders intact; a `pmatrix`
+exits before its parens the same way; a fraction typed inside a cell
+peels back into the cell content on `→` and then hops to the next
+cell; and multi-token typed fills in the `&`/`\\`-templated cells
+serialize whole (`\matrix{4&19\\27&}`).
+74 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

@@ -2203,6 +2203,139 @@ await canvasBoxesGone73('→ out of a filled denominator');
 console.log('    filled \\frac{3}{\\delta7} kept one socket, → shed it ✓');
 await page.click('#btn-clear-slate');
 
+console.log('74. matrix arrow navigation: cells walk row-major, edges exit, no phantom rows');
+// step-local: canvas grid-row count — the "third row appears" detector
+const gridRows74 = () => page.evaluate(() =>
+    document.querySelectorAll('#mathslate-editor #canvas mjx-mtable mjx-mtr').length);
+async function rowsStay74(n, label) {
+    await page.waitForTimeout(800); // give any corruption time to render
+    const got = await gridRows74();
+    if (got !== n) { throw new Error(label + ': grid grew to ' + got + ' rows (phantom row)'); }
+}
+
+// 1) THE REPORT: fill the first cell, caret before the 1, ← → exit before
+//    the matrix; no phantom third row may appear
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&\\\\&}');
+await page.keyboard.press('ArrowLeft'); // caret before the 1
+await page.keyboard.press('ArrowLeft'); // at the first cell's start → out
+await texIs68('\\matrix{1&\\\\&}');
+await rowsStay74(2, 'report flow');
+await page.keyboard.type('x');
+await texIs68('x\\matrix{1&\\\\&}');
+console.log('    1 in the first cell, ←← exited before the matrix, no third row, x landed before ✓');
+
+// 2) → from a cell's end walks row-major (same row, then the next row's
+//    first cell), and past the LAST cell exits after the matrix
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab');
+await page.keyboard.type('2');
+await texIs68('\\matrix{1&2\\\\&}');
+await page.keyboard.press('ArrowRight'); // end of row 1 → start of row 2
+await page.keyboard.type('3');
+await texIs68('\\matrix{1&2\\\\3&}');
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('4');
+await texIs68('\\matrix{1&2\\\\3&4}');
+await page.keyboard.press('ArrowRight'); // past the last cell → out
+await rowsStay74(2, '→ walk');
+await page.keyboard.type('z');
+await texIs68('\\matrix{1&2\\\\3&4}z');
+console.log('    → walked 1,2,3,4 row-major then exited after the matrix, z ✓');
+
+// 3) ← from a cell's start crosses up to the row above's LAST cell (and the
+//    fill still serializes — the templated-cell tex drop is pinned by 4/7)
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab');
+await page.keyboard.type('2');
+await page.keyboard.press('Tab');
+await page.keyboard.type('3');
+await texIs68('\\matrix{1&2\\\\3&}');
+await page.keyboard.press('ArrowLeft'); // caret before the 3
+await page.keyboard.press('ArrowLeft'); // at the start of (2,1) → END of (1,2)
+await page.keyboard.type('9');
+await texIs68('\\matrix{1&29\\\\3&}');
+console.log('    ← from (2,1) start handed the caret to (1,2) end → 29 ✓');
+
+// 4) ← from the freshly armed EMPTY first cell: clean exit, all four
+//    placeholders intact (the phantom row was a box pushed into the rows)
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.press('ArrowLeft');
+await texIs68('\\matrix{&\\\\&}');
+await rowsStay74(2, 'empty-cell exit');
+if ((await slateBoxCount73()) !== 4) {
+    throw new Error('the four cell placeholders must survive (← out of the empty first cell), got '
+        + (await slateBoxCount73()));
+}
+await page.keyboard.type('q');
+await texIs68('q\\matrix{&\\\\&}');
+console.log('    ← out of the empty first cell kept all 4 boxes, q landed before ✓');
+
+// 5) a WRAPPED matrix (pmatrix) obeys the same exit discipline
+await freshSlate68();
+await clickMatrixTool71();
+await setWrap72('p');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{pmatrix}&\\\\&\\end{pmatrix}');
+await page.keyboard.type('a');
+await texIs68('\\begin{pmatrix}a&\\\\&\\end{pmatrix}');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await rowsStay74(2, 'wrapped exit');
+await page.keyboard.type('q');
+await texIs68('q\\begin{pmatrix}a&\\\\&\\end{pmatrix}');
+console.log('    pmatrix first cell ←← exited clean before the parens ✓');
+
+// 6) a structure INSIDE a cell: → past its fraction peels into the cell
+//    content (the mtd-owner peel must stay legal), then hops to the next cell
+await freshSlate68();
+await clickMatrixTool71();
+await setWrap72(''); // 5 left the wrapper on parens
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('a');
+await page.keyboard.press('/');
+await page.keyboard.type('b');
+await texIs68('\\matrix{\\frac{a}{b}&\\\\&}');
+await page.keyboard.press('ArrowRight'); // past the denominator → beside it in the cell
+await page.keyboard.press('ArrowRight'); // cell end → next cell
+await page.keyboard.type('z');
+await texIs68('\\matrix{\\frac{a}{b}&z\\\\&}');
+await rowsStay74(2, 'fraction-in-cell peel');
+console.log('    a/b inside a cell peeled into the cell then hopped right → z ✓');
+
+// 7) templated-cell serialization: multi-token typed fills in '&'/'\\'-tex
+//    cells must appear in the TeX read-out whole (the mtd's template only
+//    references its child 0, so content lives in the cell's mrow group)
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('4');
+await page.keyboard.press('Tab');
+await page.keyboard.type('19');
+await texIs68('\\matrix{4&19\\\\&}');
+await page.keyboard.press('Tab');
+await page.keyboard.type('27');
+await texIs68('\\matrix{4&19\\\\27&}');
+console.log('    typed 19 and 27 into templated cells — every token serialized ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {
