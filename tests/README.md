@@ -73,7 +73,16 @@ poisoned its snapshots; the core now cleans by deep copy and the
 serializers drop stray markers), the emptied slot still renders its one
 visual box, and subsequent input stays clean (the cursor steps out of
 the emptied slot, so `5` lands at top level: `\frac{1}{}5`).
-63 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins Delete as a FORWARD delete, never a Backspace alias:
+at the slate's end it is a no-op (`abc` stays `abc`); parked mid-slate it
+eats the block on the RIGHT (`abc` `←` `Del` → `ab`, where Backspace gives
+`ac`); inside a focused slot it removes the token right of the intra-slot
+caret and the focus survives (`\frac{12}{}` `←` `Del` → `\frac{1}{}`, then
+`4` gives `\frac{14}{}`); inside a locked script block it eats rightward
+without ever collapsing the block (`x^{23}` `←` `Del` → `x^2`, `Space`
+exits); and the open macro box ignores it (its text caret sits at the
+name's end: `\sqr` `Del` → `\sqr`, `Backspace` → `\sq`).
+64 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

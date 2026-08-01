@@ -675,6 +675,29 @@
             pumpInput();
             return;
         }
+        if (evt.type === 'delete') {
+            // FORWARD delete — deliberately NOT a Backspace alias: it eats
+            // the token RIGHT of the caret and leaves the caret where it
+            // is. A selection deletes either way; an open macro box (whose
+            // text caret sits at the end of the name) and a caret at the
+            // slate's or slot's right edge have nothing right of them, so
+            // the key is a consumed no-op there (the undo fallback and the
+            // empty-slot/empty-block exits stay Backspace-only).
+            inputQueue.shift();
+            if (macroState.active) { pumpInput(); return; }
+            if (script.locked) { scriptDeleteForward(); pumpInput(); return; }
+            cancelScript();
+            if (slotFocus.active && !hasSlateSelection() && deleteForwardInSlot()) { pumpInput(); return; }
+            if (hasSlateSelection()) {
+                editor.mje.clear();
+            } else if (caret.gap < modelBlocks) {
+                var fwdItems = topItems(); // clean deep-copied JSON read; the rebuild re-registers
+                fwdItems.splice(caret.gap, 1); // the block RIGHT of the caret
+                rebuildSlate(fwdItems); // the caret keeps its gap: the next block shifts onto it
+            }
+            pumpInput();
+            return;
+        }
         if (evt.type === 'escape') {
             inputQueue.shift();
             if (macroState.active) {
@@ -1180,6 +1203,22 @@
         script.slot.splice(j - 1, 1);
         var stale = rebuildLocked(); // rebuildSlate maintains modelBlocks
         caret.scriptGap = j - 1;
+        if (!script.slot.length) { attemptScriptArm(stale); }
+        refreshCaret();
+    }
+
+    // Delete (forward) inside the locked block: remove the slot token RIGHT
+    // of the internal caret, which keeps its gap (the following tokens
+    // shift left onto it). At the block's right edge there is nothing to
+    // delete (a no-op, never Backspace's collapse-to-base), and an emptied
+    // block is simply re-armed as a fresh box — forward delete never backs
+    // out of the block.
+    function scriptDeleteForward() {
+        var j = scriptGap();
+        if (j >= script.slot.length) { return; } // nothing right of the caret
+        script.slot.splice(j, 1);
+        var stale = rebuildLocked(); // rebuildSlate maintains modelBlocks
+        caret.scriptGap = j;
         if (!script.slot.length) { attemptScriptArm(stale); }
         refreshCaret();
     }
@@ -1772,6 +1811,39 @@
         return true;
     }
 
+    // Delete (forward) while the slot focus lives: mirror of
+    // backspaceInSlot — remove the token RIGHT of the intra-slot caret,
+    // which then keeps its index (the following tokens shift left onto
+    // it). At the slot's right edge (or with the slot already down to its
+    // affordance box) there is nothing to delete: a consumed no-op that
+    // KEEPS the focus — releasing the slot is Backspace's exit, never a
+    // side effect of forward editing.
+    function deleteForwardInSlot() {
+        var items = topItems();
+        var arr = resolveSlotArr(items);
+        if (!arr) { clearSlotFocus(); return false; }
+        var tokIdx = slotTokenIndices(arr);
+        var ci = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length);
+        if (!tokIdx.length || ci >= tokIdx.length) {
+            rebuildSlate(items); // nothing right of the caret; keep the focus
+            caretEnd();
+            return true;
+        }
+        arr.splice(tokIdx[ci], 1);
+        // Canonical empty slot: reduce any leftover bookkeeping (mrow-layer
+        // wrapper chains around the box) to the one bare '[]' the model
+        // renders as the empty box.
+        if (!arr.length || arr.every(isBlankNode)) {
+            arr.length = 0;
+            arr.push('[]');
+        }
+        slotFocus.caretIdx = ci; // the caret stays: the right neighbour shifts onto it
+        bookmarkSlot(items, arr);
+        rebuildSlate(items);
+        caretEnd();
+        return true;
+    }
+
     // \\ pressed while the slot focus lives (e.g. right after filling the
     // box with a variable): open the macro box at the END of that slot.
     function startMacroAtFocus() {
@@ -2283,9 +2355,17 @@
 
             var mje = editor.mje;
 
-            if (e.key === 'Backspace' || e.key === 'Delete') {
+            if (e.key === 'Backspace') {
                 e.preventDefault();
                 enqueue({type: 'backspace'}); // pump decides macro vs top-level
+                return;
+            }
+            if (e.key === 'Delete') {
+                // Forward delete, not a Backspace alias: the pump removes
+                // the token RIGHT of the caret (selection first), so a
+                // caret at the slate's end sees a no-op here.
+                e.preventDefault();
+                enqueue({type: 'delete'});
                 return;
             }
             if (e.key === 'Escape') {

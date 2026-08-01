@@ -1352,6 +1352,85 @@ const buf63b = await rawPreviewNS();
 if (buf63b.includes('[]')) { throw new Error('marker text propagated into later input: ' + buf63b); }
 console.log('    cursor stepped out at the empty slot; "5" at top level →', JSON.stringify(await texNS()), '— the □ lives only in the render ✓');
 
+console.log('64. Delete is FORWARD delete (token right of the caret), never a Backspace alias');
+// at the slate's end there is nothing right of the caret: a no-op, NOT
+// Backspace's drop-the-last-block
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('abc');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'abc', null, { timeout: 15000 });
+await page.keyboard.press('Delete');
+await new Promise((r) => setTimeout(r, 700));
+if (await texNS() !== 'abc') { throw new Error('Delete at the slate end must be a no-op, got ' + (await texNS())); }
+console.log('    end of slate: abc + Delete stays "abc" ✓');
+// parked mid-slate it eats the block on the RIGHT and keeps its gap —
+// the exact mirror of Backspace there
+await page.keyboard.press('ArrowLeft');
+await new Promise((r) => setTimeout(r, 400));
+await page.keyboard.press('Delete');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'ab', null, { timeout: 15000 });
+await page.keyboard.press('Delete');
+await new Promise((r) => setTimeout(r, 500));
+if (await texNS() !== 'ab') { throw new Error('Delete with nothing right of the caret must be a no-op, got ' + (await texNS())); }
+console.log('    mid-slate: abc ← Delete → "ab" (c eaten from the right); again → no-op ✓');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('abc');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'abc', null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft');
+await new Promise((r) => setTimeout(r, 400));
+await page.keyboard.press('Backspace');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'ac', null, { timeout: 15000 });
+console.log('    contrast, same caret: Backspace → "ac" (eats from the left) ✓');
+// inside a focused slot: Delete removes the token right of the intra-slot
+// caret and the focus survives
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('\\frac');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{}{}', null, { timeout: 25000 });
+await new Promise((r) => setTimeout(r, 700));
+await page.keyboard.type('12');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{12}{}', null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft');
+await new Promise((r) => setTimeout(r, 400));
+await page.keyboard.press('Delete');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}', null, { timeout: 15000 });
+await page.keyboard.type('4');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{14}{}', null, { timeout: 15000 });
+console.log('    in-slot: \\frac{12}{} ← Delete → \\frac{1}{}, focus survives → 4 gives \\frac{14}{} ✓');
+// inside a locked script block: Delete removes the token right of the
+// block caret — never Backspace's collapse-to-base — and the macro box
+// ignores it outright (its text caret sits at the name's end)
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('x^23');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'x^{23}', null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft');
+await new Promise((r) => setTimeout(r, 400));
+await page.keyboard.press('Delete');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'x^2', null, { timeout: 15000 });
+await page.keyboard.press('Space');
+await new Promise((r) => setTimeout(r, 500));
+console.log('    locked block: x^{23} ← Delete → x^2 (3 eaten from the right), Space exits ✓');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('\\sqr');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqr', null, { timeout: 15000 });
+await page.keyboard.press('Delete');
+await new Promise((r) => setTimeout(r, 600));
+if (await texNS() !== '\\sqr') { throw new Error('Delete in the macro box must leave the name alone, got ' + (await texNS())); }
+await page.keyboard.press('Backspace');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sq', null, { timeout: 15000 });
+await page.keyboard.press('Escape');
+await new Promise((r) => setTimeout(r, 400));
+console.log('    macro box: \\sqr + Delete → \\sqr (no-op), Backspace → \\sq ✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

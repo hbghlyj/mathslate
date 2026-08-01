@@ -9,7 +9,8 @@ Drag symbols from the toolbox onto the slate (or click to append, click pieces
 of the expression to select/rearrange them), **or just type** — the basic
 character set is entered straight from the keyboard: letters, digits and
 `+ − * = ( ) [ ] < > , ; : ! ? | . '`, with `Backspace`/`Del` deleting
-(selection first, otherwise the last character) and `Esc` deselecting.
+(selection first; then `Backspace` eats the token **left** of the caret,
+`Del` the token to its **right** — never the same key) and `Esc` deselecting.
 Four keys are **TeX triggers**, not literals, binding or opening structures
 exactly like in TeX:
 
@@ -81,8 +82,8 @@ and everything typed afterwards continues inside it —
   caret in limbo (`\\sqrt` `Space` `b^2` keeps the caret inside the
   superscript, ready for more);
 - arrow keys first move an **intra-slot caret** between the slot's tokens:
-  characters insert exactly at it and `Backspace` deletes the token to its
-  left; stepping past an edge peels exactly **one nesting level** — a slot
+  characters insert exactly at it, `Backspace` deletes the token to its
+  left and `Del` the token to its right (the caret keeps its place); stepping past an edge peels exactly **one nesting level** — a slot
   inside another structure's slot hands the caret to the enclosing slot,
   parked beside the structure it just left (`\\sqrt{b^{2|}}` →
   `\\sqrt{b^2|}`, so `-` continues *inside* the radical: `\\sqrt{b^2-}`) —
@@ -96,7 +97,9 @@ and everything typed afterwards continues inside it —
   a trigger with the caret at the slot's *end* keeps the classic
   newest-wins whole-block wrap (`1/2/3` → `\frac{\frac{1}{2}}{3}`);
 - `Backspace` deletes inside the slot and, at an empty slot (or at the
-  slot's left edge), steps out instead of eating the structure;
+  slot's left edge), steps out instead of eating the structure
+  (`Del` at the slot's right edge is simply a no-op — the exit stays
+  Backspace's);
 - exits are always explicit: `Esc`, an arrow step past an edge, or
   clicking other content — and every exit **closes the slot's placeholder
   box** behind it: the trailing box only ever was the caret's socket (and
@@ -140,16 +143,23 @@ the end of the expression by default, and the **`<` / `>` buttons** (next
 to the TeX read-out — or the `←`/`→` arrow keys) step it one block at a
 time: mid-expression it anchors itself right beside the block on its right,
 and **typed characters splice in at the caret** while `Backspace` deletes
-the block to its left. Inside a locked script block the caret lives
+the block to its left and `Del` the block to its right. Inside a locked script block the caret lives
 between the block's tokens. It hides on selection, while a macro box is
 open (it owns its own cursor), and when focus moves to a text control or
 out of the window. With a snippet selected, typed characters **replace** it
 entirely and the caret returns at the end; the canvas is a drop zone and
 the caret glows while a drag hovers it.
-**Backspace audit:** history-back navigation cannot fire — every Backspace
-keydown outside a text control is intercepted (`preventDefault`) and routed:
-delete the selection, back out of a macro or script box, delete the block
-left of a mid-slate caret, or drop the most recent top-level block. (Modern browsers dropped the Backspace-shortcut years ago;
+**Backspace/Delete audit:** history-back navigation cannot fire — every
+Backspace or Delete keydown outside a text control is intercepted
+(`preventDefault`) and routed: delete the selection, back out of a macro
+or script box (`Backspace` only — a macro name's text caret sits at its
+end, so `Del` is a no-op there), delete the block left of a mid-slate
+caret (`Backspace`) or right of it (`Del`), or drop the most recent
+top-level block (`Backspace` at the end; `Del` there is a no-op, so the
+two keys are never aliases). Inside a locked script block the same split
+applies between the block's tokens, with one deliberate asymmetry:
+`Backspace` on an emptied block collapses it back to its bare base while
+`Del` leaves block exits alone. (Modern browsers dropped the Backspace-shortcut years ago;
 the interception is belt-and-braces on top.)
 
 Characters you type while MathJax re-renders are queued, so fast and slow
