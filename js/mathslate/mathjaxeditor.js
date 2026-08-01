@@ -382,21 +382,34 @@ NS.MathJaxEditor = function(id) {
      * @param string format
      */
     this.output = function(format) {
+        // Standalone app (documented patch): clean by DEEP COPY, never by
+        // mutation. The upstream version deleted ids and swapped blanks for
+        // '[]' marker strings on the LIVE tree's shared objects — and the
+        // undo stack's saveState() shares exactly those objects, so every
+        // read silently poisoned older undo snapshots: a later undo (the
+        // app's Backspace-at-end path) restored the raw '[]' markers as
+        // literal content ("\frac{1}{[]}" in the buffer, which then kept
+        // propagating into further input).
         function cleanSnippet(s) {
-            if (typeof s !== "object") { return s; }
+            if (typeof s !== "object" || s === null) { return s; }
             var t = s.slice(0);
             t.forEach(function(m, index) {
-                if (typeof m !== "object") { return; }
+                if (typeof m !== "object" || m === null) { return; }
                 if (m[1] && m[1]['class']) {
                     t[index] = '[]';
                     return;
                 }
-                if (m[1] && m[1].id) {
-                    delete m[1].id;
+                var attrs = {};
+                if (m[1]) {
+                    for (var attr in m[1]) {
+                        if (attr !== 'id') { attrs[attr] = m[1][attr]; }
+                    }
                 }
-                if (m[2]) {
-                    m[2] = cleanSnippet(m[2]);
+                var copy = [m[0], attrs];
+                if (m.length > 2) {
+                    copy[2] = cleanSnippet(m[2]);
                 }
+                t[index] = copy;
             });
             return t;
         }

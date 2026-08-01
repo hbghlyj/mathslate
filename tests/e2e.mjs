@@ -1318,6 +1318,40 @@ await page.waitForFunction(() =>
     && !!document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
 console.log('    Esc let the slot go and closed its box too ✓');
 
+console.log('63. the placeholder stays visual: 1/2 then Backspace x2 must never leak "[]" into the TeX');
+// the report: output('JSON') used to clean the slate by MUTATING the live
+// tree (blanks -> '[]' strings, ids deleted) — and the undo stack shares
+// those nested objects, so the second Backspace's undo restored a poisoned
+// snapshot and the buffer showed \frac{1}{[]} (then kept propagating). The
+// core patch cleans by deep copy and the serializers drop stray markers.
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('1/2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{2}', null, { timeout: 20000 });
+const rawPreviewNS = () => page.evaluate(() => {
+    const p = document.querySelector('#mathslate-editor .mathslate-preview');
+    return p ? p.textContent : '';
+});
+await page.keyboard.press('Backspace');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}', null, { timeout: 20000 });
+await page.keyboard.press('Backspace');
+await page.waitForTimeout(800);
+const buf63a = await rawPreviewNS();
+if (buf63a.includes('[]')) { throw new Error('placeholder marker leaked into the raw TeX buffer: ' + buf63a); }
+const tex63a = await texNS();
+if (tex63a.includes('[]')) { throw new Error('placeholder marker leaked into #current-tex: ' + tex63a); }
+console.log('    after bs x2: buffer', JSON.stringify(buf63a), '| tex', JSON.stringify(tex63a), '— zero marker text ✓');
+// the emptied denominator still renders as the visual box, and further
+// input stays clean of brackets (the cursor steps OUT at the empty slot —
+// the established contract — so the next token lands at top level)
+await page.waitForFunction(() => document.querySelectorAll('#mathslate-editor #canvas mjx-mo.blank').length === 1, null, { timeout: 15000 });
+await page.keyboard.type('5');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{}5', null, { timeout: 20000 });
+const buf63b = await rawPreviewNS();
+if (buf63b.includes('[]')) { throw new Error('marker text propagated into later input: ' + buf63b); }
+console.log('    cursor stepped out at the empty slot; "5" at top level →', JSON.stringify(await texNS()), '— the □ lives only in the render ✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

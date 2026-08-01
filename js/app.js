@@ -730,7 +730,7 @@
                     if (navArr && ((evt.value === -1 && navCi > 0)
                         || (evt.value === 1 && navCi < navTok.length))) {
                         slotFocus.caretIdx = navCi + evt.value;
-                        rebuildSlate(navItems); // heal the destructive read
+                        rebuildSlate(navItems); // re-register the model
                     } else {
                         var parent = navArr ? parentSlotOf(navItems, navArr) : null;
                         if (parent) {
@@ -739,12 +739,12 @@
                             slotFocus.path = parent.path;
                             slotFocus.caretIdx = parent.before + (evt.value === 1 ? 1 : 0);
                             bookmarkSlot(navItems, parent.arr);
-                            rebuildSlate(navItems); // heal the destructive read
+                            rebuildSlate(navItems); // re-register the model
                         } else {
                             var at = slotFocus.top;
                             stripSlotAnchorBox(navArr); // close the exited slot
                             clearSlotFocus();
-                            rebuildSlate(navItems); // heal the destructive read
+                            rebuildSlate(navItems); // re-register the model
                             caret.gap = Math.max(0, Math.min(evt.value === -1 ? at : at + 1, modelBlocks));
                         }
                     }
@@ -985,7 +985,7 @@
                 // (y ending up before +). The filled blank itself is already
                 // rekeyed away, so count AFTER the fill.
                 if (slotFocus.active) {
-                    var fitems = topItems(); // destructive read, healed below
+                    var fitems = topItems(); // clean deep-copied JSON read; the rebuild re-registers
                     var fArr = resolveSlotArr(fitems);
                     if (fArr) {
                         ensureSlotBox(fArr); // the fill consumed it
@@ -1004,7 +1004,7 @@
                     // itself is rekeyed away, so the slot is located by
                     // the token just appended to it; plain end-of-slate
                     // appends match nothing and keep the classic release.
-                    var pitems = topItems(); // destructive read, healed below
+                    var pitems = topItems(); // clean deep-copied JSON read; the rebuild re-registers
                     var loc = locateSlotEndingWith(pitems, JSON.parse(json));
                     if (loc) {
                         ensureSlotBox(loc.arr); // the fill consumed it
@@ -1058,10 +1058,12 @@
 
     // Top-level snippets as JSON strings (the slate's "blocks"). Trailing
     // '[]' placeholder blanks are dropped: they carry no content.
-    // WARNING: output('JSON') is DESTRUCTIVE to the live model — it deletes
-    // ids and stringifies blanks. Only ever call this when a rebuildSlate()
-    // follows immediately (re-adding the cleaned strings heals the model:
-    // createItem re-mints ids and re-creates blanks).
+    // output('JSON') used to be DESTRUCTIVE (it deleted ids and swapped
+    // blanks for '[]' strings on the live tree — silently poisoning undo
+    // snapshots sharing those objects, so a later Backspace-undo restored
+    // the markers as literal "[]" content); the documented core patch made
+    // the read a pure deep copy. The immediate-rebuildSlate() discipline is
+    // kept: it APPLIES the edits and re-registers the model.
     function topItems() {
         try {
             var doc = JSON.parse(editor.mje.output('JSON'));
@@ -1103,8 +1105,8 @@
     }
 
     // Rebuild the slate with the tracked slot spliced into the script node.
-    // The output('JSON') read inside topItems() corrupts the model, but the
-    // whole slate is re-added right away — createItem heals it.
+    // topItems() cleans the slate to JSON strings; the whole slate is
+    // re-added right away (createItem re-registers ids and blanks).
     function rebuildLocked() {
         var items = topItems();
         items[items.length - 1] = scriptNodeString();
@@ -1165,7 +1167,7 @@
     // on an empty block collapses the script back to its bare base.
     function scriptBackspace() {
         if (!script.slot.length) { // empty block: collapse to the bare base
-            var items = topItems(); // destructive read, healed by the rebuild
+            var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             if (script.base === '[]') { items.pop(); }
             else { items[items.length - 1] = script.base; }
             rebuildSlate(items);
@@ -1390,7 +1392,7 @@
         // (which would rip the armed box out of its slot and duplicate the
         // fraction) instead of wiping the slate.
         deselectSlate();
-        var items = topItems(); // destructive read, healed by the rebuild below
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var placed = visitBlank(items, slotIndex, function (arr, i) {
             // The slot keeps its mrow slot-wrap convention; the box is
             // its content (with its own cursor box, exactly as top-level).
@@ -1584,7 +1586,7 @@
 
     // Refresh the caret's socket (boxIdx + tokCount) from the same items
     // read the surgery already holds — the blinking caret then never has
-    // to touch the (destructive) model to find its DOM anchor.
+    // to re-read the model to find its DOM anchor.
     function bookmarkSlot(items, arr) {
         if (arr) {
             slotFocus.tokCount = slotTokenIndices(arr).length;
@@ -1695,7 +1697,7 @@
         var filled = null;
         deselectSlate(); // heal rule: clear selections before clear()s
         programmaticArmIdx = -1; // its marker died with the deselect above
-        var items = topItems(); // destructive read, healed below
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var oldSlotArr = slotFocus.active ? resolveSlotArr(items) : null;
         visitBlank(items, si, function (arr, i) {
             arr[i] = JSON.parse(json);
@@ -1719,7 +1721,7 @@
         var items = topItems();
         var arr = resolveSlotArr(items);
         if (!arr) {
-            rebuildSlate(items); // heal the destructive read first
+            rebuildSlate(items); // re-register before anything else reads the fresh model
             clearSlotFocus();
             editor.mje.addMath(json); // slot vanished: plain end-append
             modelBlocks++;
@@ -1827,7 +1829,7 @@
         var bi = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length) - 1;
         if (!arr || bi < 0) { // no base left of the caret: leave it, top-level
             if (arr) { stripSlotAnchorBox(arr); } // the focus leaves the slot
-            rebuildSlate(items); // heal the destructive read first
+            rebuildSlate(items); // re-register before anything else reads the fresh model
             clearSlotFocus();
             startScript(kind); // resumes the pump itself
             return;
@@ -1896,7 +1898,7 @@
             macroState.name = old + ch;
             macroState.armed = false;
             macroState.gen++;
-            var items = topItems(); // destructive read, healed by the rebuild
+            var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             var hit = findPlaceholder(items, old);
             if (hit) { hit.arr[hit.i] = macroNode(macroState.name); }
             rebuildSlate(items);
@@ -1956,7 +1958,7 @@
     function finishMacroInSlot(name, gen, slotIndex) {
         status('', true);
         if (!name) {
-            var items = topItems(); // destructive read, healed by the rebuild
+            var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             var hit = findPlaceholder(items, '');
             if (hit) { hit.arr[hit.i] = '[]'; setSlotFocusFromItems(items, hit.arr); rebuildSlate(items); }
             refreshCaret();
@@ -1971,7 +1973,7 @@
     // out the box, then arm the block's FIRST empty box — it inherits the
     // placeholder's slot index, so armSlotBox's addressing still works.
     function insertStructureInSlot(name, job, gen, slotIndex) {
-        var items = topItems(); // destructive read, healed by the rebuild
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var hit = findPlaceholder(items, name);
         if (hit) { swapPlaceholderInSlot(items, hit, [job.json, '[]']); }
         status(job.status, true);
@@ -2017,7 +2019,7 @@
     // TeX could not parse the name: keep the old literal behaviour —
     // inside the slot, where the box was.
     function macroFallbackInSlot(name, gen, slotIndex) {
-        var items = topItems(); // destructive read, healed by the rebuild
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var hit = findPlaceholder(items, name);
         if (hit) {
             swapPlaceholderInSlot(items, hit, [
@@ -2103,10 +2105,10 @@
     }
 
     // App-side model-write counter: editor.mje.addMath is wrapped once at
-    // boot (the core file stays untouched). This is the ONLY non-destructive
-    // way to observe model growth — output('JSON') mutates the live model
-    // and preview-row counts lag renders. rebuildSlate() suppresses its own
-    // bursts via appRebuild so only genuine writes count.
+    // boot (the core file stays untouched). This is the only side-effect-free
+    // way to observe model growth — preview-row counts lag renders and DOM
+    // reads race MathJax 4's async typeset. rebuildSlate() suppresses its
+    // own bursts via appRebuild so only genuine writes count.
     var mjeAddCount = 0;
     var appRebuild = 0;
 
@@ -2129,7 +2131,7 @@
                 var node = null;
                 try { node = JSON.parse(json); } catch (e) { node = null; }
                 if (node) {
-                    var items = topItems(); // destructive read, healed below
+                    var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
                     var hit = findPlaceholder(items, capName);
                     if (hit) { swapPlaceholderInSlot(items, hit, [node, '[]']); }
                 }
@@ -2231,7 +2233,7 @@
                 macroState.inSlot = false;
                 macroState.slotIndex = -1;
                 setMacroActiveClass(false);
-                var items0 = topItems(); // destructive read, healed below
+                var items0 = topItems(); // clean deep-copied JSON read; the rebuild re-registers
                 var hit0 = findPlaceholder(items0, '');
                 if (hit0) { hit0.arr[hit0.i] = '[]'; setSlotFocusFromItems(items0, hit0.arr); rebuildSlate(items0); }
                 refreshCaret();
@@ -2239,7 +2241,7 @@
                 return;
             }
             macroState.name = old.slice(0, -1);
-            var items1 = topItems(); // destructive read, healed below
+            var items1 = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             var hit1 = findPlaceholder(items1, old);
             if (hit1) { hit1.arr[hit1.i] = macroNode(macroState.name); }
             rebuildSlate(items1);

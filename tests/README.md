@@ -60,12 +60,20 @@ block (`e^` then `→`/←, before any fill) cancels the pending script and
 re-anchors the caret at the top level — after the block for `→` (`x`
 continues as `e^{}x`), before the block for `←` (`x` lands as `xe^{}`) —
 where the caret used to vanish for the rest of the session.
-The final step replays the `\sqrt{b^2}` report: while the superscript
+Step 62 replays the `\sqrt{b^2}` report: while the superscript
 slot is focused it shows exactly one placeholder box (the caret's
 socket), `→` out of it CLOSES that box (no stray box behind the 2; the
 radicand keeps the live focus), releasing to the slate leaves zero
 placeholder boxes, and Esc with a focused slot closes its socket too.
-62 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step replays the `1/2` + two-Backspace report: the emptied
+denominator must stay `\frac{1}{}` in both the raw TeX buffer and
+`#current-tex` — never `\frac{1}{[]}` (the undo stack used to resurrect
+raw `'[]'` blank markers after the mutating `output('JSON')` read
+poisoned its snapshots; the core now cleans by deep copy and the
+serializers drop stray markers), the emptied slot still renders its one
+visual box, and subsequent input stays clean (the cursor steps out of
+the emptied slot, so `5` lands at top level: `\frac{1}{}5`).
+63 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

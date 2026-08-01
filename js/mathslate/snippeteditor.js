@@ -235,7 +235,11 @@ NS.mSlots = function() {
             function generateMarkup (s) {
                var str = '';
                if (typeof s === 'string') {
-                   return s;
+                   // Standalone app (documented patch): a bare '[]' inside a
+                   // snippet tree is ONLY ever the internal blank marker
+                   // (createItem registers real content as objects) — never
+                   // serialize it into the TeX/buffer text.
+                   return s === '[]' ? '' : s;
                }
                if (s[1] && s[1][format]) {
                   var i = 0;
@@ -273,7 +277,10 @@ NS.mSlots = function() {
             function generateMarkup (s) {
                var str = '';
                if (typeof s === 'string') {
-                   return s;
+                   // Standalone app (documented patch): see output() — the
+                   // internal '[]' blank marker renders as the visual box
+                   // (registered blanks), never as bracket text.
+                   return s === '[]' ? '' : s;
                }
                if (s[1] && s[1].id) {
                    str = str + '<div id="' + s[1].id + '">';
