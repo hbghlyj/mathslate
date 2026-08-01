@@ -2,10 +2,10 @@
 // active "\" TeX-command placeholder visible (dashed cursor box,
 // highlighted monospace token, slate-lock glow).
 import { chromium } from 'playwright-core';
-const browser = await chromium.launch();
+const browser = await (await import('./launch.mjs')).launch();
 const page = await browser.newPage({ viewport: { width: 980, height: 1400 } });
 page.on('pageerror', (e) => console.log('PAGEERROR:', e.message.slice(0, 200)));
-await page.goto('file:///home/user/mathslate-standalone/index.html', { waitUntil: 'domcontentloaded' });
+await page.goto(new URL('../index.html', import.meta.url).href, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#mathslate-editor .yui3-dd-draggable', { timeout: 90000 });
 await page.waitForSelector('#document-area .MathJax', { timeout: 30000 });
 await page.click('#btn-clear-doc');
@@ -56,6 +56,26 @@ await page.evaluate(() => {
 await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
 await page.keyboard.type('2');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\frac{1}{2}', null, { timeout: 15000 });
+await page.click('#btn-insert-inline');
+
+// nested-structure caret demo (the report's own recipe): the caret stays
+// visible inside the superscript; ONE → peels into the radicand only
+await page.keyboard.type('\\sqrt');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 25000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('b');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 15000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() =>
+    document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{}}'
+    && !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 20000 });
+await page.keyboard.type('2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 15000 });
+await page.keyboard.press('ArrowRight'); // out of the superscript, still in the radical
+await page.keyboard.type('-4ac');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2-4ac}', null, { timeout: 15000 });
+await page.keyboard.press('ArrowRight'); // and out of the radical
 await page.click('#btn-insert-inline');
 
 // leave an ACTIVE TeX-command placeholder on the slate for the shot

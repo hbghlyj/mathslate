@@ -91,7 +91,10 @@
      *    last one — the < and > buttons (and the arrow keys) step it one
      *    block at a time, and typing splices in AT it;
      *  - locked: anchored inside a script block (a^{2|}), right where the
-     *    next character of the script goes, until an explicit exit.
+     *    next character of the script goes, until an explicit exit;
+     *  - slot: anchored inside the focused structure's slot (\\sqrt{b^{2|}}),
+     *    hugging the token/box at the intra-slot caret, until an explicit
+     *    exit peels one nesting level out.
      * It vanishes the moment a snippet or box is selected, a macro box owns
      * the cursor, or focus truly moves elsewhere (a fresh box — armed but
      * not yet filled — is itself the selection, and is the cursor).
@@ -123,14 +126,45 @@
         return slateFocused && document.hasFocus()
             && !macroState.active
             && (!script.awaiting || script.locked)
-            && !slotFocus.active
             && !hasSlateSelection();
     }
 
     // Where the caret should sit right now: null → the classic end-of-slate
-    // in-flow position; otherwise {shim, trailing} for the drop-shim span it
-    // hugs (leading or trailing edge of the anchor token).
+    // in-flow position; undefined → unresolvable THIS tick (a render is in
+    // flight — hold the last position instead of jumping to the end, which
+    // would look exactly like the caret left the structure it lives in);
+    // otherwise {shim, trailing} for the drop-shim span it hugs (leading or
+    // trailing edge of the anchor token).
     function caretAnchor() {
+        if (slotFocus.active) {
+            // The focused structure slot always keeps a trailing box, whose
+            // canvas element (blankIds() pre-order must match the model
+            // scan — bookmarkSlot keeps both sides off the same read) is
+            // climbed through its single-child mrow wrappers to the slot's
+            // rendered container. There the box's wrapper is the LAST
+            // child, so tokens index from the end — immune to any leading
+            // wrappers MathJax adds — and the box's own leading edge is
+            // the slot's end-of-caret position.
+            var bid = blankIds()[slotFocus.boxIdx];
+            var bEl = bid && document.querySelector('#mathslate-editor #canvas [id="' + bid + '"]');
+            if (bEl) {
+                var slotEl = bEl.parentElement;
+                while (slotEl && slotEl.children.length === 1) {
+                    var sp = slotEl.parentElement;
+                    if (!sp || sp.tagName.toLowerCase() !== 'mjx-mrow') { break; }
+                    slotEl = sp;
+                }
+                if (slotEl) {
+                    var kids = slotEl.children;
+                    var tn = slotFocus.tokCount;
+                    if (kids.length > tn) { // tn tokens + the box's wrapper
+                        var sk = Math.min(Math.max(slotFocus.caretIdx, 0), tn);
+                        return {el: kids[kids.length - 1 - (tn - sk)], trailing: false};
+                    }
+                }
+            }
+            return undefined; // render lag: hold the position
+        }
         if (script.locked) {
             if (!script.slot.length) { return null; } // armed box is the cursor
             var j = scriptGap();
@@ -146,7 +180,22 @@
         // DOM, which lags the model while renders are in flight; shrinking
         // caret.gap here would corrupt the next keystroke's position.
         var g = Math.max(0, Math.min(caret.gap, m));
-        if (!m || g >= m) { return null; }
+        if (!m || g >= m) {
+            if (!m) {
+                // Empty slate: the only rendered content is the decoy box.
+                // Anchor the caret absolutely to it — the in-flow fallback
+                // would wrap to a fresh line BELOW the empty slate's
+                // block-level MathJax container, visibly parking the caret
+                // inside the preview panel's territory (the "___| in the
+                // black box, □ alone in the canvas" launch look).
+                var bids = blankIds();
+                var decoy = bids.length === 1
+                    ? document.querySelector('#mathslate-editor #canvas [id="' + bids[0] + '"]')
+                    : null;
+                if (decoy) { return { el: decoy, trailing: true }; }
+            }
+            return null;
+        }
         var nshim = findShim(ids[g]);
         return nshim ? {el: nshim, trailing: false} : null;
     }
@@ -168,12 +217,13 @@
         // A re-render rewrote the canvas's contents wholesale (MathJax 4
         // replaces the host's innerHTML): the in-flow caret died with it.
         if (caretEl && !caretEl.parentNode) { caretEl = null; }
+        var anchor = caretAnchor();
+        if (typeof anchor === 'undefined') { return; } // hold last position
         if (!caretEl) {
             caretEl = document.createElement('span');
             caretEl.className = 'mathslate-caret';
             caretEl.setAttribute('aria-hidden', 'true');
         }
-        var anchor = caretAnchor();
         if (!anchor) {
             caretEl.removeAttribute('style');
             if (caretEl.parentNode !== canvas || canvas.lastElementChild !== caretEl) {
@@ -217,6 +267,39 @@
     // Track app-level focus for the caret: any real text control counts as
     // leaving the slate (the document textarea, the TeX tool's input…);
     // buttons, the slate itself and plain areas count as the slate.
+    // Take DOM focus back from any form control that is holding it. The
+    // workspace's key routing is document-level but deliberately ignores
+    // keys aimed at inputs (isFormTarget) — so while a form control holds
+    // focus (the TeX field, the document textarea), those keys land
+    // THERE, not on the slate. Interacting with the editor must reclaim
+    // DOM focus: Chromium blurs a focused input on an outside click, but
+    // not every browser does — and none of them does it at launch.
+    function blurFormFocus() {
+        var ae = document.activeElement;
+        if (ae && isFormTarget(ae) && ae.blur) { ae.blur(); }
+    }
+
+    // Hand DOM focus to the SLATE element itself (the canvas). Merely
+    // blurring every form control leaves document.activeElement on the
+    // page body — "the main workspace gains focus at launch", as the
+    // report put it; the slate should be the focus owner instead. The
+    // canvas gets tabindex="-1" (programmatically focusable, not a new
+    // tab stop), and focus() is guarded + preventScroll so boot never
+    // jumps the page. Key routing is document-level and accepts any
+    // non-form target, so typing is unaffected; browsers without
+    // div-focus-on-click (Safari) get the same state via this call.
+    function focusSlate() {
+        var slateEl = document.querySelector('#mathslate-editor #canvas');
+        if (!slateEl) { return; }
+        if (!slateEl.hasAttribute('tabindex')) {
+            slateEl.setAttribute('tabindex', '-1');
+        }
+        if (document.activeElement !== slateEl && slateEl.focus) {
+            try { slateEl.focus({ preventScroll: true }); }
+            catch (e) { slateEl.focus(); }
+        }
+    }
+
     function wireCaretFocus() {
         watchCanvasCaret();
         document.addEventListener('focusin', function (e) {
@@ -226,12 +309,22 @@
         document.addEventListener('mousedown', function (e) {
             if (e.target.closest && e.target.closest('#mathslate-editor')) {
                 // A real click or drag inside the editor is the user's own
-                // cursor placement: it lets a locked script block go.
+                // cursor placement: it lets a locked script block go. And
+                // it reclaims DOM focus from any form control (the TeX
+                // field stays focused across outside clicks on some
+                // browsers — and would keep swallowing keystrokes).
                 if (script.locked) { exitScript(); }
+                if (!isFormTarget(e.target)) { blurFormFocus(); focusSlate(); }
                 slateFocused = true;
                 refreshCaret();
             }
         });
+        // Normalize launch focus: nothing (a restored form field, a
+        // browser autofocus quirk, construction-time focusing) should own
+        // DOM focus before the user has chosen a target — and the SLATE,
+        // not the page body, is that target from the start.
+        blurFormFocus();
+        focusSlate();
         window.addEventListener('blur', refreshCaret);
         window.addEventListener('focus', refreshCaret);
         window.addEventListener('scroll', refreshCaret);
@@ -524,6 +617,24 @@
                 return;
             }
             inputQueue.shift();
+            // \\ pressed while the caret sits INSIDE a locked script block
+            // (e^i, then \\): the command box belongs INSIDE the block's
+            // slot (→ e^{i\\pi}), not at the top level. Hand the block's
+            // slot to the slot-focus machinery exactly like the ^ _ /
+            // mid-slot triggers do.
+            if (script.awaiting && script.locked && script.slot.length) {
+                var lockGapM = scriptGap(); // cancelScript resets the slot
+                cancelScript();
+                slotFocus.active = true;
+                slotFocus.top = modelBlocks - 1; // a locked block is last
+                slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → content
+                slotFocus.caretIdx = lockGapM;
+                slotFocus.boxIdx = -1; // socket re-bookmarked by the follow-up
+                slotFocus.tokCount = 0;
+                startMacroAtFocus();
+                pumpInput();
+                return;
+            }
             if (script.awaiting) { cancelScript(); } // adjacent triggers: newest wins
             startMacro(); // state-machine driven, never blocks the pump
             pumpInput();
@@ -564,6 +675,29 @@
             pumpInput();
             return;
         }
+        if (evt.type === 'delete') {
+            // FORWARD delete — deliberately NOT a Backspace alias: it eats
+            // the token RIGHT of the caret and leaves the caret where it
+            // is. A selection deletes either way; an open macro box (whose
+            // text caret sits at the end of the name) and a caret at the
+            // slate's or slot's right edge have nothing right of them, so
+            // the key is a consumed no-op there (the undo fallback and the
+            // empty-slot/empty-block exits stay Backspace-only).
+            inputQueue.shift();
+            if (macroState.active) { pumpInput(); return; }
+            if (script.locked) { scriptDeleteForward(); pumpInput(); return; }
+            cancelScript();
+            if (slotFocus.active && !hasSlateSelection() && deleteForwardInSlot()) { pumpInput(); return; }
+            if (hasSlateSelection()) {
+                editor.mje.clear();
+            } else if (caret.gap < modelBlocks) {
+                var fwdItems = topItems(); // clean deep-copied JSON read; the rebuild re-registers
+                fwdItems.splice(caret.gap, 1); // the block RIGHT of the caret
+                rebuildSlate(fwdItems); // the caret keeps its gap: the next block shifts onto it
+            }
+            pumpInput();
+            return;
+        }
         if (evt.type === 'escape') {
             inputQueue.shift();
             if (macroState.active) {
@@ -573,6 +707,11 @@
             }
             cancelScript();
             if (hasSlateSelection()) { deselectSlate(); }
+            if (slotFocus.active) { // Esc lets the slot go: close its box too
+                var escItems = topItems();
+                stripSlotAnchorBox(resolveSlotArr(escItems));
+                rebuildSlate(escItems);
+            }
             clearSlotFocus();
             pumpInput();
             return;
@@ -598,12 +737,40 @@
             inputQueue.shift();
             if (!macroState.active) {
                 if (slotFocus.active) {
-                    // an explicit nav step is how the cursor leaves the
-                    // slot: the press is spent stepping out and anchoring
-                    // the caret right beside the owning structure
-                    var at = slotFocus.top;
-                    clearSlotFocus();
-                    caret.gap = Math.max(0, Math.min(evt.value === -1 ? at : at + 1, modelBlocks));
+                    // An arrow first moves the caret INSIDE the slot (between
+                    // its tokens); only at an edge does the press step out —
+                    // and even then it peels exactly ONE nesting level: a
+                    // focused slot buried inside another structure's slot
+                    // hands the focus to that enclosing slot, parked beside
+                    // the structure it just left (\\sqrt{b^{2|}} → \\sqrt{b^2|}
+                    // keeps typing INSIDE the radical: \\sqrt{b^2-}). Only a
+                    // slot hanging directly off a top-level block releases
+                    // the caret to the slate beside that block.
+                    var navItems = topItems();
+                    var navArr = resolveSlotArr(navItems);
+                    var navTok = navArr ? slotTokenIndices(navArr) : [];
+                    var navCi = Math.min(Math.max(slotFocus.caretIdx, 0), navTok.length);
+                    if (navArr && ((evt.value === -1 && navCi > 0)
+                        || (evt.value === 1 && navCi < navTok.length))) {
+                        slotFocus.caretIdx = navCi + evt.value;
+                        rebuildSlate(navItems); // re-register the model
+                    } else {
+                        var parent = navArr ? parentSlotOf(navItems, navArr) : null;
+                        if (parent) {
+                            stripSlotAnchorBox(navArr); // close the exited slot
+                            ensureSlotBox(parent.arr);
+                            slotFocus.path = parent.path;
+                            slotFocus.caretIdx = parent.before + (evt.value === 1 ? 1 : 0);
+                            bookmarkSlot(navItems, parent.arr);
+                            rebuildSlate(navItems); // re-register the model
+                        } else {
+                            var at = slotFocus.top;
+                            stripSlotAnchorBox(navArr); // close the exited slot
+                            clearSlotFocus();
+                            rebuildSlate(navItems); // re-register the model
+                            caret.gap = Math.max(0, Math.min(evt.value === -1 ? at : at + 1, modelBlocks));
+                        }
+                    }
                     refreshCaret();
                 } else {
                     moveCaret(evt.value);
@@ -614,6 +781,29 @@
         }
         // 'script' trigger (^, _ or /)
         inputQueue.shift();
+        // ^ _ / pressed while the caret sits MID-SLOT inside a locked
+        // script block, behind one of its tokens (1^23, ←, ^): the
+        // structure belongs INSIDE the block, wrapped around the token
+        // left of the internal caret (→ 1^{2^{}3}) — never a new block
+        // around the whole expression (the {{1}^{23}}^{} mis-wrap). Hand
+        // the block's slot to the slot-focus machinery at the lock's caret
+        // position and let its in-slot trigger path do the wrap and re-arm
+        // the argument. A caret at the slot's END keeps the classic
+        // newest-wins wrap (1/2/3 → \frac{\frac{1}{2}}{3}).
+        if (script.awaiting && script.locked && script.slot.length
+            && scriptGap() > 0 && scriptGap() < script.slot.length) {
+            var lockGap = scriptGap(); // cancelScript resets the lock's slot
+            cancelScript();
+            slotFocus.active = true;
+            slotFocus.top = modelBlocks - 1; // a locked block is the last one
+            slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → slot content
+            slotFocus.caretIdx = lockGap;
+            slotFocus.boxIdx = -1; // socket re-bookmarked by startStructureAtFocus
+            slotFocus.tokCount = 0;
+            inputBusy = true; // arming the fresh argument box resumes the pump
+            startStructureAtFocus(evt.value);
+            return;
+        }
         if (script.awaiting) { cancelScript(); } // adjacent triggers: newest wins
         if (macroState.active) {
             // A script arriving while the box is open closes it first, then
@@ -787,7 +977,7 @@
                 if (fillClickedSlot(json, fillSi)) { status('', true); refreshCaret(); return; }
             }
             // Continuation typing while a slot focus lives: the token is
-            // spliced at the slot's end (the "+" bug — works with or
+            // spliced at the intra-slot caret (the "+" bug — works with or
             // without the re-armed box marker ever having appeared).
             if (!intoBox && slotFocus.active) {
                 insertCharInSlot(json);
@@ -807,6 +997,48 @@
                 // no-longer-existent blank id (a silent no-op insert).
                 scrubSelection();
                 deselectSlate();
+                programmaticArmIdx = -1; // the armed box's marker died just now
+                // The app arms boxes only as the focused slot's own
+                // continuation (conversion/trailing re-arms) while a slot
+                // focus lives — top-level arms happen with the focus off by
+                // pump routing. So this native fill landed right before the
+                // focused slot's trailing box: the slot's END. The intra-slot
+                // caret (a pure closure counter) must follow the fill there,
+                // or the next continuation keystroke would splice mid-slot
+                // (y ending up before +). The filled blank itself is already
+                // rekeyed away, so count AFTER the fill.
+                if (slotFocus.active) {
+                    var fitems = topItems(); // clean deep-copied JSON read; the rebuild re-registers
+                    var fArr = resolveSlotArr(fitems);
+                    if (fArr) {
+                        ensureSlotBox(fArr); // the fill consumed it
+                        slotFocus.caretIdx = slotTokenIndices(fArr).length;
+                        bookmarkSlot(fitems, fArr);
+                    }
+                    rebuildSlate(fitems); // heal regardless
+                } else if (fillSi !== -1 && !script.awaiting) {
+                    // An app-armed box outside a script lock is a
+                    // macro-converted or toolbox-inserted STRUCTURE slot
+                    // (\\sqrt's radicand, \\frac's numerator): the user
+                    // is clearly inside a structure — plant the durable
+                    // slot focus there, or the very next digit would drop
+                    // out after the block (\\sqrt 1 2 came out as
+                    // \\sqrt{1}2 instead of \\sqrt{12}). The filled box
+                    // itself is rekeyed away, so the slot is located by
+                    // the token just appended to it; plain end-of-slate
+                    // appends match nothing and keep the classic release.
+                    var pitems = topItems(); // clean deep-copied JSON read; the rebuild re-registers
+                    var loc = locateSlotEndingWith(pitems, JSON.parse(json));
+                    if (loc) {
+                        ensureSlotBox(loc.arr); // the fill consumed it
+                        slotFocus.active = true;
+                        slotFocus.top = loc.top;
+                        slotFocus.path = loc.path;
+                        slotFocus.caretIdx = slotTokenIndices(loc.arr).length;
+                        bookmarkSlot(pitems, loc.arr);
+                    }
+                    rebuildSlate(pitems); // heal regardless
+                }
             } else {
                 modelBlocks++;
             }
@@ -849,10 +1081,12 @@
 
     // Top-level snippets as JSON strings (the slate's "blocks"). Trailing
     // '[]' placeholder blanks are dropped: they carry no content.
-    // WARNING: output('JSON') is DESTRUCTIVE to the live model — it deletes
-    // ids and stringifies blanks. Only ever call this when a rebuildSlate()
-    // follows immediately (re-adding the cleaned strings heals the model:
-    // createItem re-mints ids and re-creates blanks).
+    // output('JSON') used to be DESTRUCTIVE (it deleted ids and swapped
+    // blanks for '[]' strings on the live tree — silently poisoning undo
+    // snapshots sharing those objects, so a later Backspace-undo restored
+    // the markers as literal "[]" content); the documented core patch made
+    // the read a pure deep copy. The immediate-rebuildSlate() discipline is
+    // kept: it APPLIES the edits and re-registers the model.
     function topItems() {
         try {
             var doc = JSON.parse(editor.mje.output('JSON'));
@@ -894,8 +1128,8 @@
     }
 
     // Rebuild the slate with the tracked slot spliced into the script node.
-    // The output('JSON') read inside topItems() corrupts the model, but the
-    // whole slate is re-added right away — createItem heals it.
+    // topItems() cleans the slate to JSON strings; the whole slate is
+    // re-added right away (createItem re-registers ids and blanks).
     function rebuildLocked() {
         var items = topItems();
         items[items.length - 1] = scriptNodeString();
@@ -956,7 +1190,7 @@
     // on an empty block collapses the script back to its bare base.
     function scriptBackspace() {
         if (!script.slot.length) { // empty block: collapse to the bare base
-            var items = topItems(); // destructive read, healed by the rebuild
+            var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             if (script.base === '[]') { items.pop(); }
             else { items[items.length - 1] = script.base; }
             rebuildSlate(items);
@@ -969,6 +1203,22 @@
         script.slot.splice(j - 1, 1);
         var stale = rebuildLocked(); // rebuildSlate maintains modelBlocks
         caret.scriptGap = j - 1;
+        if (!script.slot.length) { attemptScriptArm(stale); }
+        refreshCaret();
+    }
+
+    // Delete (forward) inside the locked block: remove the slot token RIGHT
+    // of the internal caret, which keeps its gap (the following tokens
+    // shift left onto it). At the block's right edge there is nothing to
+    // delete (a no-op, never Backspace's collapse-to-base), and an emptied
+    // block is simply re-armed as a fresh box — forward delete never backs
+    // out of the block.
+    function scriptDeleteForward() {
+        var j = scriptGap();
+        if (j >= script.slot.length) { return; } // nothing right of the caret
+        script.slot.splice(j, 1);
+        var stale = rebuildLocked(); // rebuildSlate maintains modelBlocks
+        caret.scriptGap = j;
         if (!script.slot.length) { attemptScriptArm(stale); }
         refreshCaret();
     }
@@ -999,6 +1249,22 @@
     // edge lets the cursor out — the block never loses it otherwise.
     function moveCaret(dir) {
         scrubSelection();
+        if (script.awaiting && !script.locked) {
+            // The fresh script box is armed (or still arming) but never
+            // filled — e.g. e^ then →: the press steps OUT of the empty
+            // block. exitScript cancels the pending script state too —
+            // without that the state stayed "awaiting" after the armed
+            // box lost its selection, and since an awaiting-unlocked
+            // script suppresses the caret (the glowing box stands in for
+            // it), the caret vanished for the rest of the session even
+            // though typing kept appending at the top level.
+            exitScript();
+            if (dir < 0) { // …before the block, if stepping out on the left
+                caret.gap = Math.max(0, modelBlocks - 1);
+                refreshCaret();
+            }
+            return;
+        }
         if (hasSlateSelection()) {
             deselectSlate();
             caretEnd();
@@ -1165,7 +1431,7 @@
         // (which would rip the armed box out of its slot and duplicate the
         // fraction) instead of wiping the slate.
         deselectSlate();
-        var items = topItems(); // destructive read, healed by the rebuild below
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var placed = visitBlank(items, slotIndex, function (arr, i) {
             // The slot keeps its mrow slot-wrap convention; the box is
             // its content (with its own cursor box, exactly as top-level).
@@ -1232,10 +1498,17 @@
      * a variable" bugs). The durable fix tracks the focus slot as a pure
      * closure address —
      *
-     *   slotFocus  {active, top, path} — durable: top = the owning
-     *                        structure's index among the top-level blocks,
-     *                        path = child-index path down its JSON tree to
-     *                        the slot's CONTENT array. It is planted the
+     *   slotFocus  {active, top, path, caretIdx, boxIdx, tokCount} —
+     *                        durable: top = the owning structure's index
+     *                        among the top-level blocks, path = child-index
+     *                        path down its JSON tree to the slot's CONTENT
+     *                        array, caretIdx = the intra-slot caret (a
+     *                        token count; 0 sits before the first token),
+     *                        boxIdx = the slot's trailing box in blankIds()
+     *                        pre-order and tokCount = the slot's token tally
+     *                        (the caret's live-DOM socket — refreshed by
+     *                        bookmarkSlot at every surgery, so the 250 ms
+     *                        caret never needs a model read). It is planted the
      *                        moment a USER-clicked box is filled (app-armed
      *                        boxes are told apart by programmaticArmIdx,
      *                        synchronously — no timing assumptions) and
@@ -1246,10 +1519,16 @@
      * surgery (the healed topItems+splice+rebuildSlate pattern), never
      * through the selection DOM — MathJax 4 may lag whole keystrokes with
      * its async typeset + font fetches without ever stranding the cursor.
-     * The focus ends only on an explicit exit: Esc, a nav step (which
-     * parks the caret right beside the structure), a click on top-level
-     * content, or the owning structure vanishing (watcher-validated). */
-    var slotFocus = {active: false, top: -1, path: null};
+     * Chars insert AT caretIdx, Backspace deletes the token to its left,
+     * ^ _ / wrap the token to its left, and arrows first step caretIdx —
+     * only a step past an edge exits (parking the caret right beside the
+     * structure). The other explicit exits are Esc, a click on top-level
+     * content, or the owning structure vanishing (watcher-validated). A
+     * NATIVE fill of an app-armed box while the focus lives is always that
+     * slot's own continuation (the conversion/trailing re-arms): the caret
+     * is resynced to the slot end right after such a fill. */
+    var slotFocus = {active: false, top: -1, path: null, caretIdx: 0,
+        boxIdx: -1, tokCount: 0};
     // Programmatic shim clicks (structure/script/macro re-arms) must never
     // masquerade as user intent: they arm boxes for ONE native fill, whose
     // release semantics stay untouched (typed-after-an-auto-armed-box still
@@ -1265,6 +1544,9 @@
         slotFocus.active = false;
         slotFocus.top = -1;
         slotFocus.path = null;
+        slotFocus.caretIdx = 0;
+        slotFocus.boxIdx = -1;
+        slotFocus.tokCount = 0;
     }
 
     // Identity search: child-index path from a JSON node to the exact
@@ -1300,7 +1582,70 @@
             slotFocus.active = true;
             slotFocus.top = loc.top;
             slotFocus.path = loc.path;
+            slotFocus.caretIdx = slotTokenIndices(arr).length; // end of slot
+            bookmarkSlot(items, arr);
         }
+    }
+
+    // Every slot the app maintains ends in an empty box: the next input
+    // unit's home (a click target), and the caret's DOM socket. A NATIVE
+    // fill always consumes it (the core's rekey drops the filled blank),
+    // so the fill paths restore it here.
+    function ensureSlotBox(arr) {
+        if (!arr.length || !isBlankNode(arr[arr.length - 1])) { arr.push('[]'); }
+    }
+
+    // …and the trailing box dies with the focus. It only ever was the
+    // caret's socket + next fill's click target; left behind after an
+    // exit it renders as a stray placeholder behind the slot's content
+    // (the "b^{2□}" the report showed after → out of the superscript).
+    // A slot holding NOTHING but the box is the structure's own empty
+    // argument affordance (\sqrt{}, e^{}) — that one stays.
+    function stripSlotAnchorBox(arr) {
+        if (arr && arr.length > 1 && isBlankNode(arr[arr.length - 1])) { arr.pop(); }
+    }
+
+    // Pre-order index (blankIds() order) of the LAST blank that lives
+    // inside the content array found by identity — the slot's own
+    // trailing box under the trailing-box convention (-1 when there is
+    // none, e.g. right between a structure wrap and its argument's fill,
+    // when the pending argument box is itself the cursor).
+    function blankIndexInArrayEnd(items, target) {
+        var seen = 0, result = -1;
+        (function scan(arr, inside) {
+            var in2 = inside || arr === target;
+            for (var i = 0; i < arr.length; i++) {
+                var c = arr[i];
+                if (c === '[]') { if (in2) { result = seen; } seen++; }
+                else if (Array.isArray(c) && Array.isArray(c[2])) { scan(c[2], in2); }
+            }
+        })(items, false);
+        return result;
+    }
+
+    // Refresh the caret's socket (boxIdx + tokCount) from the same items
+    // read the surgery already holds — the blinking caret then never has
+    // to re-read the model to find its DOM anchor.
+    function bookmarkSlot(items, arr) {
+        if (arr) {
+            slotFocus.tokCount = slotTokenIndices(arr).length;
+            slotFocus.boxIdx = blankIndexInArrayEnd(items, arr);
+        } else {
+            slotFocus.tokCount = 0;
+            slotFocus.boxIdx = -1;
+        }
+    }
+
+    // A slot keeps its tokens FLAT with one trailing box, so the intra-slot
+    // caret can be a plain token index: slotTokenIndices lists the content
+    // positions (everything but boxes), and caretIdx counts them — typing
+    // lands exactly where the caret sits, not only at the end.
+    function slotTokenIndices(arr) {
+        var idx = [];
+        for (var i = 0; i < arr.length; i++) {
+            if (!isBlankNode(arr[i])) { idx.push(i); }
+        }
+        return idx;
     }
 
     // The focused slot's content array in a fresh topItems() read, or null.
@@ -1330,6 +1675,29 @@
             }
         })(items);
         return result;
+    }
+
+    // {top, path, arr} of the LAST content array (document order) whose
+    // final element deep-equals node — i.e. the slot a token was just
+    // appended to. Top-level rows are not slots, so a plain end-of-slate
+    // fill never matches.
+    function locateSlotEndingWith(items, node) {
+        var want = JSON.stringify(node), found = null;
+        items.forEach(function (root, t) {
+            if (typeof root === 'string' || !Array.isArray(root)) { return; }
+            (function scan(arr, path) {
+                for (var i = 0; i < arr.length; i++) {
+                    var c = arr[i];
+                    if (Array.isArray(c)) {
+                        if (c.length && JSON.stringify(c[c.length - 1]) === want) {
+                            found = {top: t, path: path.concat([i]), arr: c};
+                        }
+                        scan(c, path.concat([i]));
+                    }
+                }
+            })(root, []);
+        });
+        return found;
     }
 
     // A slot's trailing box shows up in cleaned JSON in two forms: the bare
@@ -1367,12 +1735,18 @@
     function fillClickedSlot(json, si) {
         var filled = null;
         deselectSlate(); // heal rule: clear selections before clear()s
-        var items = topItems(); // destructive read, healed below
+        programmaticArmIdx = -1; // its marker died with the deselect above
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
+        var oldSlotArr = slotFocus.active ? resolveSlotArr(items) : null;
         visitBlank(items, si, function (arr, i) {
             arr[i] = JSON.parse(json);
             filled = arr;
         });
         if (!filled) { rebuildSlate(items); return false; } // heal the read
+        if (oldSlotArr && oldSlotArr !== filled) {
+            stripSlotAnchorBox(oldSlotArr); // the focus moved: close the old socket
+        }
+        ensureSlotBox(filled); // the caret's socket (and next fill's home)
         setSlotFocusFromItems(items, filled);
         rebuildSlate(items);
         caretEnd();
@@ -1380,19 +1754,28 @@
     }
 
     // Continuation typing while the slot focus lives: splice the token at
-    // the end of the slot (before its trailing box), all by JSON surgery.
+    // the intra-slot caret (before the trailing box at the end), all by
+    // JSON surgery.
     function insertCharInSlot(json) {
         var items = topItems();
         var arr = resolveSlotArr(items);
         if (!arr) {
-            rebuildSlate(items); // heal the destructive read first
+            rebuildSlate(items); // re-register before anything else reads the fresh model
             clearSlotFocus();
             editor.mje.addMath(json); // slot vanished: plain end-append
             modelBlocks++;
             caretEnd();
             return;
         }
-        insertAtSlotEnd(arr, JSON.parse(json));
+        var tokIdx = slotTokenIndices(arr);
+        var ci = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length);
+        if (ci >= tokIdx.length) {
+            insertAtSlotEnd(arr, JSON.parse(json));
+        } else {
+            arr.splice(tokIdx[ci], 0, JSON.parse(json));
+        }
+        slotFocus.caretIdx = ci + 1;
+        bookmarkSlot(items, arr);
         rebuildSlate(items);
         caretEnd();
     }
@@ -1405,15 +1788,16 @@
         var items = topItems();
         var arr = resolveSlotArr(items);
         if (!arr) { clearSlotFocus(); return false; }
-        var last = arr.length - 1;
-        if (last >= 0 && isBlankNode(arr[last])) { last--; }
-        if (last < 0) {
+        var tokIdx = slotTokenIndices(arr);
+        var ci = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length);
+        if (!tokIdx.length || ci === 0) {
             rebuildSlate(items); // heal the read; nothing was deleted
             clearSlotFocus();
             caretEnd();
             return true;
         }
-        arr.splice(last, 1);
+        slotFocus.caretIdx = ci - 1;
+        arr.splice(tokIdx[ci - 1], 1);
         // Canonical empty slot: reduce any leftover bookkeeping (mrow-layer
         // wrapper chains around the box) to the one bare '[]' the model
         // renders as the empty box.
@@ -1421,6 +1805,40 @@
             arr.length = 0;
             arr.push('[]');
         }
+        bookmarkSlot(items, arr);
+        rebuildSlate(items);
+        caretEnd();
+        return true;
+    }
+
+    // Delete (forward) while the slot focus lives: mirror of
+    // backspaceInSlot — remove the token RIGHT of the intra-slot caret,
+    // which then keeps its index (the following tokens shift left onto
+    // it). At the slot's right edge (or with the slot already down to its
+    // affordance box) there is nothing to delete: a consumed no-op that
+    // KEEPS the focus — releasing the slot is Backspace's exit, never a
+    // side effect of forward editing.
+    function deleteForwardInSlot() {
+        var items = topItems();
+        var arr = resolveSlotArr(items);
+        if (!arr) { clearSlotFocus(); return false; }
+        var tokIdx = slotTokenIndices(arr);
+        var ci = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length);
+        if (!tokIdx.length || ci >= tokIdx.length) {
+            rebuildSlate(items); // nothing right of the caret; keep the focus
+            caretEnd();
+            return true;
+        }
+        arr.splice(tokIdx[ci], 1);
+        // Canonical empty slot: reduce any leftover bookkeeping (mrow-layer
+        // wrapper chains around the box) to the one bare '[]' the model
+        // renders as the empty box.
+        if (!arr.length || arr.every(isBlankNode)) {
+            arr.length = 0;
+            arr.push('[]');
+        }
+        slotFocus.caretIdx = ci; // the caret stays: the right neighbour shifts onto it
+        bookmarkSlot(items, arr);
         rebuildSlate(items);
         caretEnd();
         return true;
@@ -1439,6 +1857,37 @@
         startMacroInSlot(si);
     }
 
+    // The slot ENCLOSING the focused one, read off the focus path's tail
+    // […, i, 2, k, 2]: the structure at index i of the parent slot carries
+    // the focused slot as its k-th child slot. Verified by identity
+    // against the live tree (a mismatch degrades to the classic top-level
+    // exit). Returns {path, arr, before} where before counts the parent
+    // slot's tokens left of that structure; null when the focused slot
+    // hangs directly off its top-level block (path [2, n, 2]).
+    function parentSlotOf(items, navArr) {
+        var P = slotFocus.path;
+        if (!P || P.length < 4) { return null; }
+        var i = P[P.length - 4], k = P[P.length - 2];
+        if (P[P.length - 3] !== 2 || P[P.length - 1] !== 2) { return null; }
+        var node = items[slotFocus.top];
+        if (typeof node === 'string') { node = JSON.parse(node); }
+        if (!Array.isArray(node)) { return null; }
+        var PP = P.slice(0, P.length - 4);
+        for (var s = 0; s < PP.length; s++) {
+            node = node[PP[s]];
+            if (!Array.isArray(node)) { return null; }
+        }
+        var structure = node[i];
+        if (!Array.isArray(structure) || !Array.isArray(structure[2])) { return null; }
+        var wrap = structure[2][k];
+        if (!Array.isArray(wrap) || wrap[2] !== navArr) { return null; }
+        var before = 0;
+        for (var t = 0; t < i && t < node.length; t++) {
+            if (!isBlankNode(node[t])) { before++; }
+        }
+        return {path: PP, arr: node, before: before};
+    }
+
     // ^ _ / while the slot focus lives: wrap the slot's LAST token into
     // the structure (exactly the top-level trigger's template), then arm
     // the fresh argument box — clicked-open, so filling it re-anchors the
@@ -1448,17 +1897,24 @@
         if (!job) { resumeInput(); return; }
         var items = topItems();
         var arr = resolveSlotArr(items);
-        var bi = arr ? arr.length - 1 : -1;
-        if (arr && bi >= 0 && isBlankNode(arr[bi])) { bi--; }
-        if (!arr || bi < 0) { // no base inside the slot: leave it, top-level
-            rebuildSlate(items); // heal the destructive read first
+        var tokIdx = arr ? slotTokenIndices(arr) : [];
+        var bi = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length) - 1;
+        if (!arr || bi < 0) { // no base left of the caret: leave it, top-level
+            if (arr) { stripSlotAnchorBox(arr); } // the focus leaves the slot
+            rebuildSlate(items); // re-register before anything else reads the fresh model
             clearSlotFocus();
             startScript(kind); // resumes the pump itself
             return;
         }
-        var base = arr[bi];
+        var base = arr[tokIdx[bi]];
         var node = [job.tag, {tex: job.tex}, [base, '[]']];
-        arr.splice(bi, 1, node);
+        arr.splice(tokIdx[bi], 1, node);
+        // The fresh argument box is the cursor now (the trailing-box
+        // convention's own wording): the slot's old socket closes, so the
+        // only visible box while the argument fills is the argument's.
+        stripSlotAnchorBox(arr);
+        slotFocus.caretIdx = bi + 1; // caret sits right after the structure
+        bookmarkSlot(items, arr); // the fresh argument box shifted blanks
         var si = blankIndexInArray(items, node[2]); // the fresh argument box
         var stale = blankIds();
         rebuildSlate(items);
@@ -1473,7 +1929,12 @@
                 user-facing: NOT a programmatic arm (no record entry), so
                 filling it takes the surgical path and re-anchors the slot
                 focus inside the argument — characters keep accumulating */
-            resumeInput();
+            // The click's selection marker only lands with the NEXT async
+            // typeset; hold the pump's queued keystrokes until it does, or
+            // a fast typist's fill arrives while macroSlotIndex() still
+            // reads -1 and the token splices into the outer slot instead
+            // (\sqrt{b^{}2} — the race behind the report's missing caret).
+            pollUntil(hasSlateSelection, resumeInput, 200, resumeInput);
         }, 300, resumeInput);
     }
 
@@ -1509,7 +1970,7 @@
             macroState.name = old + ch;
             macroState.armed = false;
             macroState.gen++;
-            var items = topItems(); // destructive read, healed by the rebuild
+            var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             var hit = findPlaceholder(items, old);
             if (hit) { hit.arr[hit.i] = macroNode(macroState.name); }
             rebuildSlate(items);
@@ -1569,7 +2030,7 @@
     function finishMacroInSlot(name, gen, slotIndex) {
         status('', true);
         if (!name) {
-            var items = topItems(); // destructive read, healed by the rebuild
+            var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             var hit = findPlaceholder(items, '');
             if (hit) { hit.arr[hit.i] = '[]'; setSlotFocusFromItems(items, hit.arr); rebuildSlate(items); }
             refreshCaret();
@@ -1584,7 +2045,7 @@
     // out the box, then arm the block's FIRST empty box — it inherits the
     // placeholder's slot index, so armSlotBox's addressing still works.
     function insertStructureInSlot(name, job, gen, slotIndex) {
-        var items = topItems(); // destructive read, healed by the rebuild
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var hit = findPlaceholder(items, name);
         if (hit) { swapPlaceholderInSlot(items, hit, [job.json, '[]']); }
         status(job.status, true);
@@ -1630,7 +2091,7 @@
     // TeX could not parse the name: keep the old literal behaviour —
     // inside the slot, where the box was.
     function macroFallbackInSlot(name, gen, slotIndex) {
-        var items = topItems(); // destructive read, healed by the rebuild
+        var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
         var hit = findPlaceholder(items, name);
         if (hit) {
             swapPlaceholderInSlot(items, hit, [
@@ -1716,10 +2177,10 @@
     }
 
     // App-side model-write counter: editor.mje.addMath is wrapped once at
-    // boot (the core file stays untouched). This is the ONLY non-destructive
-    // way to observe model growth — output('JSON') mutates the live model
-    // and preview-row counts lag renders. rebuildSlate() suppresses its own
-    // bursts via appRebuild so only genuine writes count.
+    // boot (the core file stays untouched). This is the only side-effect-free
+    // way to observe model growth — preview-row counts lag renders and DOM
+    // reads race MathJax 4's async typeset. rebuildSlate() suppresses its
+    // own bursts via appRebuild so only genuine writes count.
     var mjeAddCount = 0;
     var appRebuild = 0;
 
@@ -1742,7 +2203,7 @@
                 var node = null;
                 try { node = JSON.parse(json); } catch (e) { node = null; }
                 if (node) {
-                    var items = topItems(); // destructive read, healed below
+                    var items = topItems(); // clean deep-copied JSON read; the rebuild re-registers
                     var hit = findPlaceholder(items, capName);
                     if (hit) { swapPlaceholderInSlot(items, hit, [node, '[]']); }
                 }
@@ -1844,7 +2305,7 @@
                 macroState.inSlot = false;
                 macroState.slotIndex = -1;
                 setMacroActiveClass(false);
-                var items0 = topItems(); // destructive read, healed below
+                var items0 = topItems(); // clean deep-copied JSON read; the rebuild re-registers
                 var hit0 = findPlaceholder(items0, '');
                 if (hit0) { hit0.arr[hit0.i] = '[]'; setSlotFocusFromItems(items0, hit0.arr); rebuildSlate(items0); }
                 refreshCaret();
@@ -1852,7 +2313,7 @@
                 return;
             }
             macroState.name = old.slice(0, -1);
-            var items1 = topItems(); // destructive read, healed below
+            var items1 = topItems(); // clean deep-copied JSON read; the rebuild re-registers
             var hit1 = findPlaceholder(items1, old);
             if (hit1) { hit1.arr[hit1.i] = macroNode(macroState.name); }
             rebuildSlate(items1);
@@ -1894,9 +2355,17 @@
 
             var mje = editor.mje;
 
-            if (e.key === 'Backspace' || e.key === 'Delete') {
+            if (e.key === 'Backspace') {
                 e.preventDefault();
                 enqueue({type: 'backspace'}); // pump decides macro vs top-level
+                return;
+            }
+            if (e.key === 'Delete') {
+                // Forward delete, not a Backspace alias: the pump removes
+                // the token RIGHT of the caret (selection first), so a
+                // caret at the slate's end sees a no-op here.
+                e.preventDefault();
+                enqueue({type: 'delete'});
                 return;
             }
             if (e.key === 'Escape') {

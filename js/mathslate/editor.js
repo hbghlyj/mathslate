@@ -66,7 +66,12 @@ NS.Editor = function(editorID, config, params) {
                             findBlank(a);
                         }
                         else if (a === '[]') {
-                        snippet[2][snippet[2].indexOf(a)] = ['mn', {}, '[]'];
+                        // Standalone app (documented patch): the toolbox LABEL
+                        // shows the placeholder as the same visual box the
+                        // slate renders (\u25FB), not a literal "[]" pair —
+                        // brackets are functional math symbols (intervals,
+                        // matrices), the box is the unified fill-in affordance.
+                        snippet[2][snippet[2].indexOf(a)] = ['mo', {}, '\u25FB'];
                         }
                     });
                 }
@@ -103,10 +108,14 @@ NS.Editor = function(editorID, config, params) {
                 });
                 return o;
             }
+            // this.json must capture the snippet BEFORE findBlank swaps the
+            // '[]' markers for display boxes (createItem expects the raw
+            // markers back on the slate); the label/title are display-only,
+            // so they are built after the swap and show the box too.
             this.json = JSON.stringify(snippet);
+            findBlank(snippet);
             this.HTMLsnippet = [['span', {id: this.id, title: title(snippet)}, [['math', {}, [snippet]]]]];
 
-            findBlank(snippet);
             tbox.tools.push(this);
         },
         /* Initialyze the available tools

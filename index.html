@@ -21,8 +21,8 @@
  * handler, which is gone; css fetching is disabled in YUI_config below and
  * the needed stylesheets are linked by hand instead.
 -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/tabview/assets/tabview-core.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/tabview/assets/skins/sam/tabview-skin.css">
+<link rel="stylesheet" href="vendor/yui/tabview/assets/tabview-core.css">
+<link rel="stylesheet" href="vendor/yui/tabview/assets/skins/sam/tabview-skin.css">
 <link rel="stylesheet" href="css/styles.css"><!-- original Mathslate editor styles -->
 <link rel="stylesheet" href="css/app.css"><!-- standalone shell styles -->
 
@@ -35,6 +35,10 @@
 -->
 <script>
     window.MathJax = {
+        // webfonts + dynamic font data resolve under vendor/fonts/
+        loader: {
+            paths: {fonts: 'vendor/fonts'}
+        },
         tex: {
             inlineMath: [['\\(', '\\)']],
             displayMath: [['\\[', '\\]']],
@@ -42,11 +46,26 @@
         },
         options: {
             skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code',
-                           'annotation', 'annotation-xml']
+                           'annotation', 'annotation-xml'],
+            // No SRE speech/braille/enrichment: the app exposes no explorer
+            // or context-menu UI, and the SRE worker cannot fetch its
+            // locale maps over file://, which wedges every typeset (the
+            // document-level enable* flags get re-driven from these menu
+            // settings by the a11y menu mixin, so this is the only switch
+            // that actually holds).
+            menuOptions: {
+                settings: {speech: false, braille: false, enrich: false}
+            }
         },
         chtml: {
             displayAlign: 'left',
-            displayIndent: '0'
+            displayIndent: '0',
+            // MathJax 4 line-breaks INLINE math at operator boundaries by
+            // default (a v4 option upstream of this editor's MathJax 2
+            // heritage); the fixed-width toolbox tab labels then wrap —
+            // the '=⊅' label stacked the '⊅' under the '=', hanging a
+            // glyph below the tab strip. v2 behaviour: never break.
+            linebreaks: {inline: false}
         },
         startup: {
             typeset: false
@@ -54,12 +73,14 @@
     };
 </script>
 <!--
- * MathJax 4 (TeX + MathML input, CHTML output; pinned build).
+ * MathJax 4 (TeX + MathML input, CHTML output; pinned 4.1.3 build, vendored
+ * under vendor/mathjax/ with its NewCM webfont in vendor/fonts/, so the app
+ * runs fully offline).
  * Mathslate was written for MathJax 2.7 and speaks its v2 runtime API
  * (MathJax.Hub & friends); js/mathjax4-shim.js implements that sliver of
  * v2 API over the v4 component, so the upstream modules run untouched.
 -->
-<script src="https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-mml-chtml.js"></script>
+<script src="vendor/mathjax/tex-mml-chtml.js"></script>
 <script src="js/mathjax4-shim.js"></script>
 
 </head>
@@ -94,15 +115,22 @@
            Clicking a fill-box inside a structure &mdash; e.g. the empty denominator of a
            fraction &mdash; <strong>keeps the caret in that slot</strong>: everything typed continues
            inside it (<kbd>\</kbd> opens the command box there, so <code>\beta</code> becomes part
-           of the denominator; <kbd>^</kbd> <kbd>_</kbd> <kbd>/</kbd> wrap there too, and
-           <kbd>Backspace</kbd> deletes inside it), until <kbd>Esc</kbd> or an arrow steps out.
+           of the denominator; <kbd>^</kbd> <kbd>_</kbd> <kbd>/</kbd> wrap the token left of the
+           caret there, and <kbd>Backspace</kbd> deletes inside it). Arrow keys first walk the caret
+           between the slot's tokens &mdash; mid-slot <code>1^23</code> then <kbd>&larr;</kbd> then
+           <kbd>^</kbd> hatches on the <code>2</code> (<code>1^{2^{}3}</code>) &mdash; the blinking
+           caret stays visible inside the slot, and stepping past an edge peels one level
+           out (<code>\sqrt{b^2}</code> then <kbd>&rarr;</kbd> keeps it inside the radical, so
+           <code>-4ac</code> continues there); <kbd>Esc</kbd> or clicking elsewhere lets it
+           out entirely.
            A <strong>blinking caret</strong> marks the end of the expression whenever nothing is
            selected &mdash; the next symbol or drop lands right before it &mdash; and typing with a
            symbol selected replaces it. A script block <strong>keeps the cursor</strong> for
            continuous input (<code>a^23</code> &rarr; <code>a^{23}</code>): only <kbd>&rarr;</kbd>,
            <kbd>Space</kbd>, <kbd>Enter</kbd> or <kbd>Esc</kbd> lets it out. The <code>&lt;</code>/<code>&gt;</code>
-           buttons (and arrow keys) move the blinking caret between blocks &mdash; typing and
-           <kbd>Backspace</kbd> act at the caret. Single-character script arguments and single-character
+           buttons (and arrow keys) move the blinking caret between blocks &mdash; typing,
+           <kbd>Backspace</kbd> (deletes left of the caret) and <kbd>Del</kbd> (deletes right of
+           the caret) act at the caret. Single-character script arguments and single-character
            bases output without braces (<code>a^2</code>, not <code>{a}^{2}</code>).</p>
 
         <!-- The Mathslate editor mounts here (replaces the loading notice) -->
@@ -150,7 +178,7 @@
        <a href="https://github.com/dthies/tinymce4-mathslate">tinymce4-mathslate</a> TinyMCE 4 plugin.
        Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL v3</a>.
        Runs on <a href="https://clarle.github.io/yui3/">YUI 3.18</a> and
-       <a href="https://www.mathjax.org/">MathJax 4.1</a> (via jsDelivr).</p>
+       <a href="https://www.mathjax.org/">MathJax 4.1.3</a> (vendored, runs offline).</p>
 </footer>
 
 <!-- Moodle compatibility shims the editor expects (replacing what Moodle/TinyMCE provided) -->
@@ -164,19 +192,21 @@
 </script>
 
 <!--
- * YUI seed. Yahoo's original CDN is defunct, so point the loader at cdnjs.
- * cdnjs has no combo handler: combine is disabled (plain per-module requests)
- * and widget CSS is linked manually in <head> (fetchCSS: false).
+ * YUI seed, vendored under vendor/yui/ (3.18.1 npm build tree; the rollup
+ * files the loader asks for are synthesized concatenations of their
+ * submodules, noted in each file's header comment). No combo handler:
+ * combine is disabled (plain per-module requests) and widget CSS is linked
+ * manually in <head> (fetchCSS: false).
 -->
 <script>
     window.YUI_config = {
-        base: 'https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/',
+        base: 'vendor/yui/',
         combine: false,
         fetchCSS: false,
         lang: 'en'
     };
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/yui/3.18.1/yui/yui-min.js"></script>
+<script src="vendor/yui/yui/yui-min.js"></script>
 
 <!-- Mathslate core: Moodle string shim, inlined tool config, the four YUI modules -->
 <script src="js/strings.js"></script>

@@ -9,7 +9,8 @@ Drag symbols from the toolbox onto the slate (or click to append, click pieces
 of the expression to select/rearrange them), **or just type** — the basic
 character set is entered straight from the keyboard: letters, digits and
 `+ − * = ( ) [ ] < > , ; : ! ? | . '`, with `Backspace`/`Del` deleting
-(selection first, otherwise the last character) and `Esc` deselecting.
+(selection first; then `Backspace` eats the token **left** of the caret,
+`Del` the token to its **right** — never the same key) and `Esc` deselecting.
 Four keys are **TeX triggers**, not literals, binding or opening structures
 exactly like in TeX:
 
@@ -25,7 +26,11 @@ Script blocks **keep the cursor**: after the first fill the block stays
 further character accumulates in the block — exactly the continuous input
 TeX's braces group. Only an explicit navigation command lets it out: `→`
 (or the `>` button) at the block's end, `Space`, `Enter`, `Esc`, or a
-click elsewhere on the slate. `←`/`→` (and the `<`/`>` buttons) step the
+click elsewhere on the slate. An arrow pressed while the fresh block is
+still EMPTY (armed box, nothing typed yet) steps straight back out and
+re-anchors the caret at the top level: `→` parks it right after the
+still-empty block (`e^` `→` `x` → `e^{}x`), `←` parks it before the
+block (`e^` `←` `x` → `xe^{}`). `←`/`→` (and the `<`/`>` buttons) step the
 caret **between the block's tokens** while it is locked; `Backspace`
 inside deletes the block's last token and collapses an emptied block back
 to its bare base. The `\` placeholder is a little three-state box of its own:
@@ -47,8 +52,10 @@ to its bare base. The `\` placeholder is a little three-state box of its own:
    take arguments — `\frac`, `\dfrac`, `\tfrac`, `\binom`, `\sqrt` —
    open as a **live structure block** instead: the toolbox template with
    empty boxes (e.g. a fraction with numerator + denominator), the first
-   box pre-selected so typing fills it right away — one token per box, as
-   with the toolbox; click the other box to fill it. The closing
+   box pre-selected so typing fills it right away — and the slot focus
+   keeps the caret inside, so digits accumulate (`\\sqrt` `Enter` `12` →
+   `\\sqrt{12}`); click another box to fill it, or step out with an
+   arrow. The closing
    character is processed strictly after the conversion: `\alpha^2` ends
    as α² stacked (`{\alpha}^{2}`), and `\frac` + `Enter` + `12` + click
    + `3` gives `\frac{12}{3}`. The converted node's TeX is wrapped
@@ -63,26 +70,72 @@ a persistent **slot focus**: filling the box keeps the caret in that slot,
 and everything typed afterwards continues inside it —
 
 - `\\` opens the command box **inside the slot** (`b` then `\\beta` →
-  `b\\beta` — previously the backslash silently exited the fraction);
+  `b\\beta` — previously the backslash silently exited the fraction). The
+  same holds while a top-level script block is locked: `e^i` then `\\` opens
+  the box inside the superscript (`e^{i\\pi}`);
 - plain characters and delimiters like `+` continue at the slot's end
   (`\\frac` `Enter` `1`, click the denominator, `\\beta` `Enter` `+` →
   `\\frac{1}{\\beta+}`, even when the `+` is typed the instant the
   conversion lands);
-- `^`, `_`, `/` wrap the slot's last token into a script or fraction
-  right there, the argument box arms, and input keeps accumulating inside
-  the argument (`a` `^` `23` → `a^{23}` without leaving the fraction);
-- `Backspace` deletes inside the slot and, at an empty slot, steps out
-  instead of eating the structure;
-- exits are always explicit: `Esc`, an arrow/nav step (the caret parks
-  right beside the structure), or clicking other content.
+- the **blinking caret stays visible inside the slot**, hugging the token
+  (or trailing box) at the intra-slot position — typing never leaves the
+  caret in limbo (`\\sqrt` `Space` `b^2` keeps the caret inside the
+  superscript, ready for more);
+- arrow keys first move an **intra-slot caret** between the slot's tokens:
+  characters insert exactly at it, `Backspace` deletes the token to its
+  left and `Del` the token to its right (the caret keeps its place); stepping past an edge peels exactly **one nesting level** — a slot
+  inside another structure's slot hands the caret to the enclosing slot,
+  parked beside the structure it just left (`\\sqrt{b^{2|}}` →
+  `\\sqrt{b^2|}`, so `-` continues *inside* the radical: `\\sqrt{b^2-}`) —
+  and only a slot hanging directly off a top-level block releases the
+  caret to the slate beside that block;
+- `^`, `_`, `/` wrap the token **left of the intra-slot caret** into a
+  script or fraction right there, the argument box arms, and input keeps
+  accumulating inside the argument (`a` `^` `23` → `a^{23}` without leaving
+  the fraction). The same holds while a top-level script block is locked:
+  `1^23` then `←` then `^` hatches ON the `2` in place (`1^{2^{}3}`) —
+  a trigger with the caret at the slot's *end* keeps the classic
+  newest-wins whole-block wrap (`1/2/3` → `\frac{\frac{1}{2}}{3}`);
+- `Backspace` deletes inside the slot and, at an empty slot (or at the
+  slot's left edge), steps out instead of eating the structure
+  (`Del` at the slot's right edge is simply a no-op — the exit stays
+  Backspace's);
+- exits are always explicit: `Esc`, an arrow step past an edge, or
+  clicking other content — and every exit **closes the slot's placeholder
+  box** behind it: the trailing box only ever was the caret's socket (and
+  the next fill's click target), so `\\sqrt{b^2}` then `→` leaves a clean
+  `b^2` with no stray box behind the `2`. A slot holding nothing but the
+  box keeps it — that one is the structure's own empty-argument affordance
+  (`\\sqrt{}`, `e^{}`).
+
+**Focus discipline.** The slate owns DOM focus from the moment the app
+opens — literally: the slate canvas is programmatically focusable
+(`tabindex="-1"`, so no new tab stop) and `document.activeElement` is the
+canvas at launch, not the page body and not the TeX tool's field — so
+typing starts working immediately with no click; and a click anywhere in
+the editor reclaims DOM focus **for the slate** from whatever form control
+held it (the TeX field, the document textarea — even on browsers that
+keep inputs focused across outside clicks), so keystrokes always follow
+the visible caret. The blinking caret is the app's focus indicator, so
+the browser's default focus outline on the workspace is suppressed. On
+the empty slate the caret hugs the decoy box absolutely (MathJax typesets
+the empty slate's container block-level, so an in-flow caret would wrap
+to a fresh line below the slate — visibly centered inside the black
+preview panel while the □ sits alone at the canvas's bottom left).
 
 The focus lives as a pure closure address (owning top-level block + JSON
-path into the slot's content array) — no DOM markers involved — so
-MathJax 4's asynchronous re-renders can never strand the cursor or bounce
-it out of the fraction. Boxes that the app arms *for you* (a fresh
-structure's first box, the script box after `^`/`_` at top level, macro
-conversions) keep the classic one-token-per-box behaviour: after such a
-fill, typing continues after the block.
+path into the slot's content array + intra-slot token index + the trailing
+box's pre-order blank index, the caret's DOM socket) — no DOM markers
+involved in routing — so MathJax 4's asynchronous re-renders can never
+strand the cursor or bounce it out of the fraction. The arming click that
+opens a fresh argument box now also holds the input queue until its
+selection marker actually lands, so even a zero-delay fast typist cannot
+have a fill splice into the wrong slot while the marker is in flight. Structure boxes the app arms
+*for you* (a macro-converted `\\sqrt`'s radicand, `\\frac`'s numerator)
+plant the slot focus on their first native fill, so continuation typing
+stays inside; only the script-trigger boxes (`^`/`_` at top level) keep
+the classic one-token-per-box release (their own lock machinery owns
+accumulation there).
 
 **The blinking caret.** Whenever nothing on the slate is selected and the
 editor has focus, a blinking caret marks the insertion point. It parks at
@@ -90,16 +143,23 @@ the end of the expression by default, and the **`<` / `>` buttons** (next
 to the TeX read-out — or the `←`/`→` arrow keys) step it one block at a
 time: mid-expression it anchors itself right beside the block on its right,
 and **typed characters splice in at the caret** while `Backspace` deletes
-the block to its left. Inside a locked script block the caret lives
+the block to its left and `Del` the block to its right. Inside a locked script block the caret lives
 between the block's tokens. It hides on selection, while a macro box is
 open (it owns its own cursor), and when focus moves to a text control or
 out of the window. With a snippet selected, typed characters **replace** it
 entirely and the caret returns at the end; the canvas is a drop zone and
 the caret glows while a drag hovers it.
-**Backspace audit:** history-back navigation cannot fire — every Backspace
-keydown outside a text control is intercepted (`preventDefault`) and routed:
-delete the selection, back out of a macro or script box, delete the block
-left of a mid-slate caret, or drop the most recent top-level block. (Modern browsers dropped the Backspace-shortcut years ago;
+**Backspace/Delete audit:** history-back navigation cannot fire — every
+Backspace or Delete keydown outside a text control is intercepted
+(`preventDefault`) and routed: delete the selection, back out of a macro
+or script box (`Backspace` only — a macro name's text caret sits at its
+end, so `Del` is a no-op there), delete the block left of a mid-slate
+caret (`Backspace`) or right of it (`Del`), or drop the most recent
+top-level block (`Backspace` at the end; `Del` there is a no-op, so the
+two keys are never aliases). Inside a locked script block the same split
+applies between the block's tokens, with one deliberate asymmetry:
+`Backspace` on an emptied block collapses it back to its bare base while
+`Del` leaves block exits alone. (Modern browsers dropped the Backspace-shortcut years ago;
 the interception is belt-and-braces on top.)
 
 Characters you type while MathJax re-renders are queued, so fast and slow
@@ -131,11 +191,15 @@ The app is plain HTML/CSS/JS. Two ways to use it:
   # → http://localhost:8000
   ```
 
-An internet connection is required either way: YUI 3.18.1 and its TabView
-skin load from cdnjs; MathJax 4.1.3 (`tex-mml-chtml.js` and its NewCM
-webfont chunks, fetched on demand) loads from jsDelivr — cdnjs does not
-carry MathJax 4. (The original plugin used Yahoo's YUI CDN, which no longer
-exists.)
+No internet connection is needed: every runtime dependency is **vendored**
+under `vendor/` — YUI 3.18.1 (the npm build tree plus its TabView skin and
+a synthesized `assets/skins/sam/sprite.png`; the 41 rollup files the loader
+requests are regenerated as concatenations of their submodules, marked in
+each file's header), MathJax 4.1.3 (`tex-mml-chtml.js`, its SRE speech
+worker and the NewCM webfont packages, all resolved through
+`MathJax.loader.paths.fonts`). (The original plugin used Yahoo's YUI CDN,
+which no longer exists; an earlier revision of this standalone pulled YUI
+from cdnjs and MathJax from jsDelivr.)
 
 ## What was changed in the extraction
 
@@ -145,21 +209,24 @@ The editor core (`js/mathslate/*.js`, `css/styles.css`, `help.html`,
 
 | File | Change |
 | --- | --- |
-| `js/mathslate/editor.js` | Accepts the tool config as a JS object (`M.tinymce_mathslate.configJSON` from `js/config.js`) in addition to a URL fetched with `Y.io`. Enables `file://` use. |
-| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. And for the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). |
+| `js/mathslate/editor.js` | Accepts the tool config as a JS object (`M.tinymce_mathslate.configJSON` from `js/config.js`) in addition to a URL fetched with `Y.io`. Enables `file://` use. Also, toolbox tool *labels* render each blank marker as the same visual box the slate uses (`□`, U+25FB) instead of a literal `[]` pair — brackets are functional math symbols (intervals, matrices), the box is the unified fill-in affordance; the stored tool json keeps the raw marker, so dropping a tool still lands a live blank on the slate (marked `Standalone app (documented patch)`). |
+| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. For the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). And the FIRST canvas render requests inline math instead of `display="block"` (under the app's `displayAlign:'left'` config a display-mode first render left-justified the empty slate's placeholder box at the canvas's bottom-left until the first keystroke re-rendered it centred; marked `Standalone app (documented patch)`). Also, `output('JSON')` cleans the slate by DEEP COPY instead of mutating the live tree: the upstream code deleted ids and swapped blanks for `'[]'` strings on the shared objects, which silently poisoned undo/redo snapshots — a later undo restored the raw markers as literal content (`\frac{1}{[]}` in the buffer, then propagating; marked `Standalone app (documented patch)`). |
+| `js/mathslate/textool.js` | The TeX tool's input no longer takes DOM focus at construction: the standalone app wants the *workspace* focused at launch, so the first keystrokes land on the slate (marked `Standalone app (documented patch)`). |
+| `js/mathslate/snippeteditor.js` | The `output()`/`preview()` serializers never emit a bare `'[]'` element: inside a snippet tree that string is only ever the internal blank marker, so it must stay a render-level box and can never leak into the TeX text (marked `Standalone app (documented patch)`). |
 | `plugin.js` / `mathslate.html` / `yui/build/*dialogue*` | **Dropped.** The TinyMCE plugin wrapper and Moodle dialogue module are replaced by `js/app.js`, which owns the "document" and the Insert/Copy/Clear actions that used to live on TinyMCE's dialogue buttons. |
+| `config.json` / `js/config.js` | The Latin-alphabet tab gains two quick-access rows alongside its lowercase/uppercase/digits rows: calligraphic script `\mathcal A`–`\mathcal Z` and Fraktur `\mathfrak A`–`\mathfrak Z` (26 + 26 single-glyph tools, built exactly like MathJax 4's own TeX output for those macros — `\mathcal{A}`'s `<mi>` carries `data-mjx-variant="-tex-calligraphic"` on top of `mathvariant="script"` (without the internal variant the canvas shows the Unicode script alphabet, not the classic calligraphic one), `\mathfrak{A}`'s just `mathvariant="fraktur"` — so the canvas, the label and the TeX read-out all agree with the real macros). Also fixed two upstream-latent tools: the total/partial derivative buttons wrapped their glyph in a one-element array (`["mi",{},["d"]]`, `["mi",{},["∂"]]`) that `toMathML` silently drops, so the buttons rendered as empty `<mjx-mi>` and looked exactly like the plain fraction — and the slate lost the `d`/`∂` on insertion too; the glyphs are plain string content now. `js/config.js` is the inlined runtime copy of `config.json`; both list the tools identically. |
 | `index.html`, `js/app.js`, `js/config.js`, `css/app.css`, `js/mathjax4-shim.js` | **New.** App shell, document model (source textarea + MathJax-rendered pane), clipboard/export helpers, keyboard entry of the literal character set, inlined config, and the MathJax v2-to-v4 API shim. |
 
-Also: YUI now loads from `cdnjs.cloudflare.com/ajax/libs/yui/3.18.1` with
-`combine:false` and `fetchCSS:false` (the TabView skin is linked by hand),
-and MathJax is pinned to `4.1.3` on jsDelivr.
+Also: YUI loads from `vendor/yui/` with `combine:false` and
+`fetchCSS:false` (the TabView skin is linked by hand), and MathJax is
+pinned to `4.1.3` under `vendor/mathjax/`.
 
 ## How it works
 
 ```
 index.html
- ├─ YUI 3.18.1 (cdnjs) ── loader pulls tabview / dd / io / json … modules
- ├─ MathJax 4.1.3 (jsDelivr, tex-mml-chtml)
+ ├─ YUI 3.18.1 (vendor/yui) ─ loader pulls tabview / dd / io / json … modules
+ ├─ MathJax 4.1.3 (vendor/mathjax, tex-mml-chtml; fonts in vendor/fonts)
  ├─ js/mathjax4-shim.js  the v2 API (Hub/Queue/Text/addElement, math/tex
  │                        scripts, Callback) re-expressed over MathJax 4
  ├─ js/strings.js        M.util.get_string() shim (was: Moodle lang strings)
@@ -182,15 +249,25 @@ the document source, which a MathJax-typeset pane renders live.
 Upstream Mathslate was written against the MathJax 2 API. The port keeps the
 four core modules essentially verbatim and adapts around them:
 
-* **Dependencies & config** — `mathjax@4.1.3/tex-mml-chtml.js` from jsDelivr
-  replaces the cdnjs 2.7.9 build (v4 ships no `es5/` or `-full` variants;
-  cdnjs simply does not carry it), and the v2 `MathJax.Hub.Config({...})`
+* **Dependencies & config** — `mathjax@4.1.3/tex-mml-chtml.js` (vendored;
+  v4 ships no `es5/` or `-full` variants) replaces the cdnjs 2.7.9 build,
+  and the v2 `MathJax.Hub.Config({...})`
   call becomes an inline v4 options object set before the bundle loads
   (`tex.inlineMath`/`displayMath` with the same `\( \)` / `\[ \]`
   delimiters + `processEscapes`, `options.skipHtmlTags` extended with
   `annotation`/`annotation-xml`, `chtml.displayAlign:'left'`,
-  `displayIndent:'0'`, `startup.typeset:false`). Webfonts stream from
-  jsDelivr's `@mathjax/mathjax-newcm-font@4.1.3` on demand.
+  `displayIndent:'0'`, `chtml.linebreaks.inline:false` (v4 breaks inline
+  math at operators by default; v2 never did — with it on, the
+  fixed-width `=⊅` toolbox tab label wrapped a glyph below the tab
+  strip), `startup.typeset:false`). Webfonts load from the
+  vendored `@mathjax/mathjax-newcm-font@4.1.3` copy (`vendor/fonts/`).
+  The port also exposed one content bug in the labels: the Calculus tab's
+  `<mi>∇</mi>` picked up v4's italic nabla (v2's fonts had none to fall
+  back to), so the label now sets `mathvariant="normal"`, matching the
+  `\nabla` tool itself (and checked by the suite). And with label math no
+  longer wrapped or shrunk, the fixed `3.25em` label width made `tan∠`
+  protrude across the next tab — `css/app.css` sizes the tab labels to
+  their content (`min-width: 3.25em`) instead.
 * **`js/mathjax4-shim.js`** re-expresses the v2 surface the core codes to —
   `MathJax.Hub` (`Queue`, `getAllJax`, `Typeset`, `isQuiet`, config hooks),
   `Hub.Queue`'s `['Text', jax, …]` element renderer, `MathJax.HTML.addElement`,
@@ -240,9 +317,11 @@ delete-a-selection, and no leakage from text fields — plus the caret
 lifecycle (blink animation, end and mid-slate anchoring, show/hide on
 selection and focus), the `<`/`>` navigation buttons and arrow-key stepping
 (edits land AT the caret), script-block retention with its four explicit
-exits, replace-on-selection typing, the Backspace-no-navigation audit, and
+exits (including the arrow over an armed-but-empty block: the caret
+re-anchors at top level, `e^` `→` `x` → `e^{}x`), replace-on-selection
+typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 53 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 62 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 
