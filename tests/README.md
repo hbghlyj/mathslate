@@ -114,7 +114,16 @@ the fill landing in the fresh argument box, not the fraction's own boxes.
 Because the control case clears the slate the instant the `^` box's TeX
 appears (mid-arm), it also covers the clear-during-arm ghost fix: typing
 right after a Clear can no longer fall into a stale placeholder selection.
-68 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins fraction cursor navigation: `←` from the
+denominator's start climbs to the numerator's END (never an early exit),
+repeated `←` walks the numerator left, one final `←` exits the fraction
+to the left, and `→` roundtrips from the numerator's end to the
+denominator's start — verified in the locked `/` state (`a/bc`), after a
+click-focused box fill (where the slot path is buried under the blank
+wrapper mrows the fill leaves behind), and for a structure base (an
+empty `\sqrt{}` numerator stays byte-identical while the caret anchors
+after it).
+69 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

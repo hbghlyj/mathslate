@@ -763,8 +763,25 @@
                         slotFocus.caretIdx = navCi + evt.value;
                         rebuildSlate(navItems); // re-register the model
                     } else {
-                        var parent = navArr ? parentSlotOf(navItems, navArr) : null;
-                        if (parent) {
+                        // FRACTION NAVIGATION: at an mfrac slot's edge the
+                        // arrow steps into the SIBLING slot before any peel
+                        // lets the caret out — ← from the denominator's
+                        // start jumps up to the numerator's END, → from the
+                        // numerator's end drops to the denominator's start.
+                        // Repeated ← then walks the numerator to its start
+                        // and one final ← exits the fraction to the left.
+                        var sib = navArr ? fracSiblingSlot(navItems, navArr, evt.value) : null;
+                        var parent = (!sib && navArr) ? parentSlotOf(navItems, navArr) : null;
+                        if (sib) {
+                            stripSlotAnchorBox(navArr); // close the exited slot
+                            ensureSlotBox(sib.arr);
+                            slotFocus.path = sib.path;
+                            slotFocus.caretIdx = evt.value === -1
+                                ? slotTokenIndices(sib.arr).length // the numerator's END
+                                : 0; // the denominator's START
+                            bookmarkSlot(navItems, sib.arr);
+                            rebuildSlate(navItems); // re-register the model
+                        } else if (parent) {
                             stripSlotAnchorBox(navArr); // close the exited slot
                             ensureSlotBox(parent.arr);
                             slotFocus.path = parent.path;
@@ -1362,6 +1379,9 @@
             if (!script.slot.length) { exitScript(); return; }
             var j = scriptGap() + dir;
             if (j < 0 || j > script.slot.length) { // stepped past the edge: leave
+                // FRACTION NAVIGATION: ← past the denominator's START climbs
+                // into the numerator's END instead of leaving the fraction.
+                if (j < 0 && script.kind === '/' && jumpToFracNumerator()) { return; }
                 exitScript();
                 if (j < 0) { // …before the block, if stepping out on the left
                     caret.gap = Math.max(0, modelBlocks - 1);
@@ -1951,8 +1971,40 @@
     // exit). Returns {path, arr, before} where before counts the parent
     // slot's tokens left of that structure; null when the focused slot
     // hangs directly off its top-level block (path [2, n, 2]).
+    // A slot path can end in WRAPPER levels: findBlank (and every
+    // re-registration) wraps a slot's blank one single-child,
+    // attribute-less mrow deeper, and a box fill plants the focus inside
+    // that innermost wrapper — so the raw path reads […, 2, k, 2, 0, 2, …]
+    // where k only LOOKS like the structure's slot index. Navigation must
+    // reason about the LOGICAL slot (the structure's own child), so trim
+    // trailing [0, 2] pairs — but only while the addressed node really is
+    // a lone tex-less mrow wrapper: a real [2, 0, 2] end (an mfrac's
+    // numerator at child 0) must never be eaten.
+    function unwrapSlotPath(items, P) {
+        if (!P) { return P; }
+        var node = items[slotFocus.top];
+        if (typeof node === 'string') { node = JSON.parse(node); }
+        function resolve(path) {
+            var n = node;
+            for (var s = 0; s < path.length; s++) {
+                if (!Array.isArray(n)) { return null; }
+                n = n[path[s]];
+            }
+            return n;
+        }
+        while (P.length >= 5 && P[P.length - 2] === 0 && P[P.length - 1] === 2) {
+            var parentArr = resolve(P.slice(0, P.length - 2));
+            if (!Array.isArray(parentArr) || parentArr.length !== 1) { break; }
+            var wrap = parentArr[0];
+            if (!Array.isArray(wrap) || wrap[0] !== 'mrow'
+                || (wrap[1] && wrap[1].tex)) { break; }
+            P = P.slice(0, P.length - 2);
+        }
+        return P;
+    }
+
     function parentSlotOf(items, navArr) {
-        var P = slotFocus.path;
+        var P = unwrapSlotPath(items, slotFocus.path);
         if (!P || P.length < 4) { return null; }
         var i = P[P.length - 4], k = P[P.length - 2];
         if (P[P.length - 3] !== 2 || P[P.length - 1] !== 2) { return null; }
@@ -1967,12 +2019,80 @@
         var structure = node[i];
         if (!Array.isArray(structure) || !Array.isArray(structure[2])) { return null; }
         var wrap = structure[2][k];
-        if (!Array.isArray(wrap) || wrap[2] !== navArr) { return null; }
+        // the focused content sits inside structure[2][k] — directly, or
+        // under wrapper mrows (unwrapSlotPath only trims the common case)
+        if (!Array.isArray(wrap) || !pathOfArray(wrap, navArr, [])) { return null; }
         var before = 0;
         for (var t = 0; t < i && t < node.length; t++) {
             if (!isBlankNode(node[t])) { before++; }
         }
         return {path: PP, arr: node, before: before};
+    }
+
+    // Intra-FRACTION navigation: the focused slot's SIBLING slot in the
+    // same mfrac (numerator ↔ denominator), or null when the press points
+    // past the fraction's own outer edge. The slot's path locates it
+    // positionally — a slot path always ends […, 2, k, 2]: the structure
+    // node, its children array, the slot's mrow at index k, then the
+    // content array (the same discipline parentSlotOf uses). A bare-token
+    // sibling (the / trigger leaves the numerator as the plain base
+    // snippet) is WRAPPED into the slot convention on the fly: mrow
+    // grouping renders invisibly, so the TeX and the canvas stay
+    // identical while the caret gains a socket to anchor to.
+    function fracSiblingSlot(items, navArr, dir) {
+        var P = unwrapSlotPath(items, slotFocus.path);
+        if (!P || P.length < 3) { return null; }
+        var k = P[P.length - 2];
+        if (P[P.length - 3] !== 2 || P[P.length - 1] !== 2) { return null; }
+        var structure = items[slotFocus.top];
+        if (typeof structure === 'string') { structure = JSON.parse(structure); }
+        var PP = P.slice(0, P.length - 3);
+        for (var s = 0; s < PP.length; s++) {
+            if (!Array.isArray(structure)) { return null; }
+            structure = structure[PP[s]];
+        }
+        if (!Array.isArray(structure) || structure[0] !== 'mfrac'
+            || !Array.isArray(structure[2])) { return null; }
+        var wrap = structure[2][k];
+        if (!Array.isArray(wrap) || !pathOfArray(wrap, navArr, [])) { return null; }
+        var j = k + dir;
+        if (j < 0 || j >= structure[2].length) { return null; } // the fraction's outer edge
+        if (!(Array.isArray(structure[2][j]) && structure[2][j][0] === 'mrow'
+            && Array.isArray(structure[2][j][2]))) {
+            structure[2][j] = ['mrow', {}, [structure[2][j]]]; // wrap the bare base
+        }
+        return {path: PP.concat([2, j, 2]), arr: structure[2][j][2]};
+    }
+
+    // ← past the start of a LOCKED fraction's denominator (moveCaret's
+    // edge case): convert the lock into a slot focus parked at the
+    // numerator's END — the same jump fracSiblingSlot performs for a
+    // click-focused slot. Returns false when the locked block is not a
+    // top-level fraction after all; the caller then exits classically.
+    function jumpToFracNumerator() {
+        var itemsF = topItems();
+        var node = itemsF[itemsF.length - 1]; // a locked block is the last one
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return false; }
+            itemsF[itemsF.length - 1] = node;
+        }
+        if (!Array.isArray(node) || node[0] !== 'mfrac' || !Array.isArray(node[2])) {
+            return false;
+        }
+        cancelScript(); // the slot focus takes over from the lock
+        if (!(Array.isArray(node[2][0]) && node[2][0][0] === 'mrow'
+            && Array.isArray(node[2][0][2]))) {
+            node[2][0] = ['mrow', {}, [node[2][0]]]; // wrap the bare base
+        }
+        var numArr = node[2][0][2];
+        slotFocus.active = true;
+        slotFocus.top = itemsF.length - 1;
+        slotFocus.path = [2, 0, 2];
+        slotFocus.caretIdx = slotTokenIndices(numArr).length; // the numerator's END
+        bookmarkSlot(itemsF, numArr);
+        rebuildSlate(itemsF); // re-register the model
+        refreshCaret();
+        return true;
     }
 
     // ^ _ / while the slot focus lives: wrap the slot's LAST token into

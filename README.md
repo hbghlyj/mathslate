@@ -147,6 +147,17 @@ stays inside; only the script-trigger boxes (`^`/`_` at top level) keep
 the classic one-token-per-box release (their own lock machinery owns
 accumulation there).
 
+**Fraction navigation.** Inside a fraction the arrows climb between the
+two slots instead of stepping out early: `←` from the denominator's
+start jumps straight up to the numerator's **end**, and `→` from the
+numerator's end drops back to the denominator's start. Repeated `←`
+then walks the numerator left token by token, and one final `←` past
+its start exits the fraction to the left — while `→` past the
+denominator's end exits to the right. This holds both while a typed `/`
+block is still locked and after clicking into a box of a finished
+fraction. (A bare base numerator is wrapped in an invisible `mrow` so
+the caret has a socket — TeX and rendering are unchanged.)
+
 **The blinking caret.** Whenever nothing on the slate is selected and the
 editor has focus, a blinking caret marks the insertion point. It parks at
 the end of the expression by default, and the **`<` / `>` buttons** (next

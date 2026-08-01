@@ -1658,6 +1658,71 @@ await texIs68('{\\frac{1}{2}}^3');
 console.log('    select a frac numerator, ^ → "{\\frac{1}{2}}^{}"; the fill lands in the argument, not in the frac ✓');
 await page.click('#btn-clear-slate');
 
+console.log('69. fraction cursor navigation: ← climbs denominator → numerator, final ← exits left');
+// helpers from step 68 are reused: freshSlate68, texIs68, clickTopBlock68
+// Locked / flow (typed): ← at the denominator's START jumps to the
+// numerator's END instead of exiting the fraction.
+await freshSlate68();
+await page.keyboard.type('a/bc');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // b|c inside the denominator
+await page.keyboard.type('X');
+await texIs68('\\frac{a}{bXc}');
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // to the denominator's start
+await page.keyboard.press('ArrowLeft'); // past it: jump to the numerator's END
+await page.keyboard.type('Y');
+await texIs68('\\frac{aY}{bc}');
+console.log('    locked: ← at the denominator start climbs to the numerator end →', "\\frac{aY}{bc} ✓");
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // to the numerator's start
+await page.keyboard.type('Z');
+await texIs68('\\frac{Za}{bc}');
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // past the numerator's start: exit left
+await page.keyboard.type('W');
+await texIs68('W\\frac{a}{bc}');
+console.log('    locked: the numerator walks left, one final ← exits the fraction →', "W\\frac{a}{bc} ✓");
+
+// click-focused slot flow (the same navigation after a box fill) + the → roundtrip
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await clickTopBlock68(0);
+await page.keyboard.type('/');
+await texIs68('\\frac{1}{}2');
+await page.keyboard.type('5');
+await texIs68('\\frac{1}{5}2');
+await page.keyboard.press('ArrowLeft'); // denominator start
+await page.keyboard.press('ArrowLeft'); // jump to the numerator's end
+await page.keyboard.type('Y');
+await texIs68('\\frac{1Y}{5}2');
+console.log('    focused: ← at the denominator start climbs to the numerator end →', "\\frac{1Y}{5}2 ✓");
+await page.keyboard.press('ArrowRight'); // roundtrip: back to the denominator's START
+await page.keyboard.type('Q');
+await texIs68('\\frac{1Y}{Q5}2');
+console.log('    focused: → at the numerator end drops to the denominator start →', "\\frac{1Y}{Q5}2 ✓");
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{1Y}{5}2');
+
+// a STRUCTURE base (an empty radical) is wrapped invisibly: the canvas and
+// the TeX stay identical while the caret anchors after the radical
+await freshSlate68();
+await page.keyboard.type('\\sqrt');
+await page.keyboard.type('/'); // closes the macro, wraps the radical
+await texIs68('\\frac{\\sqrt{}}{}');
+await page.keyboard.type('b');
+await texIs68('\\frac{\\sqrt{}}{b}');
+await page.keyboard.press('ArrowLeft'); // denominator start
+await page.keyboard.press('ArrowLeft'); // jump to the numerator's end
+await page.keyboard.type('Y');
+await texIs68('\\frac{\\sqrt{}Y}{b}');
+console.log('    structure base "\\sqrt{}" stays intact, the fill anchors after it →', "\\frac{\\sqrt{}Y}{b} ✓");
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {
