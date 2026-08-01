@@ -409,6 +409,14 @@
             if (editor && editor.mje) {
                 cancelScript();
                 macroReset();
+                clearSlotFocus(); // no structure survives the wipe
+                programmaticArmIdx = -1; // an armed box's marker dies with it
+                // Scrub the STALE selection synchronously: clear()'s
+                // re-render takes whole keystrokes under MathJax 4, and a
+                // lingering ghost marker makes a fast re-type insert before
+                // a blank id that no longer exists — a silent no-op that
+                // eats the character (the "type right after Clear" report).
+                deselectSlate();
                 inputQueue.length = 0;
                 resumeInput();
                 editor.mje.clear();
@@ -791,7 +799,8 @@
         // the argument. A caret at the slot's END keeps the classic
         // newest-wins wrap (1/2/3 → \frac{\frac{1}{2}}{3}).
         if (script.awaiting && script.locked && script.slot.length
-            && scriptGap() > 0 && scriptGap() < script.slot.length) {
+            && scriptGap() > 0 && scriptGap() < script.slot.length
+            && !hasSlateSelection()) { // a real selection re-points the cursor
             var lockGap = scriptGap(); // cancelScript resets the lock's slot
             cancelScript();
             slotFocus.active = true;
@@ -811,6 +820,15 @@
             inputQueue.unshift({type: 'script', value: evt.value});
             inputQueue.unshift({type: 'macro-end'});
             pumpInput();
+            return;
+        }
+        // ^ _ / with a REAL (non-blank) slate selection: the user clicked a
+        // finished block and THEN pressed the trigger — the structure must
+        // wrap the SELECTED block where it stands ("12", click "1", "^"
+        // wraps the 1; startScript's doc.pop() would take the 2).
+        if (hasSlateSelection() && !selectedNodeIsBlank()) {
+            inputBusy = true; // wrapSelectedStructure's async arming resumes the pump
+            wrapSelectedStructure(evt.value);
             return;
         }
         if (slotFocus.active && !hasSlateSelection()) { // ^ _ / with a caret inside a structure slot
@@ -898,6 +916,75 @@
                 resumeInput();
             });
         }, 300, resumeInput); // arming failed → just continue at top level
+    }
+
+    // Index of the selection among the TOP-LEVEL slate blocks (the preview
+    // rows — one per block, exactly the topItems() order), or -1 when the
+    // marker is unreadable. The core marks BOTH the canvas node and the
+    // preview div carrying the selected id; a nested selection (a
+    // fraction's numerator…) resolves to its containing row, so a
+    // structure wraps what the user pointed at, as one whole.
+    function selectedTopIndex() {
+        var sel = document.querySelector('#mathslate-editor .mathslate-preview .mathslate-selected');
+        if (!sel) { return -1; }
+        var rows = document.querySelectorAll('#mathslate-editor .mathslate-preview > div');
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i] === sel || rows[i].contains(sel)) { return i; }
+        }
+        return -1;
+    }
+
+    // ^ _ / with a real slate selection: wrap the SELECTED block in the
+    // structure in place, then make the fresh argument box the cursor —
+    // the same planted-slot-focus + user-facing shim click as
+    // startStructureAtFocus, so the first fill goes through fillClickedSlot
+    // and re-anchors inside the argument (characters accumulate there).
+    function wrapSelectedStructure(kind) {
+        var job = JOBS[kind];
+        if (!job) { resumeInput(); return; }
+        if (script.awaiting) { cancelScript(); } // mostly already cancelled by the pump
+        var ridx = selectedTopIndex();
+        deselectSlate(); // heal rule: clear selections before clear()s
+        if (ridx < 0) { startScript(kind); return; } // marker unreadable: last-block default
+        var items = topItems();
+        if (ridx >= items.length) { rebuildSlate(items); startScript(kind); return; }
+        // Build EXACTLY the scriptNodeString() slot convention — [base,
+        // mrow{slot content}] — so resolveSlotArr (path [2,1,2]) keeps
+        // finding the argument across the core's re-registration passes.
+        var node = [job.tag, {tex: job.tex}, [items[ridx], ['mrow', {}, ['[]']]]];
+        var slotContent = node[2][1][2];
+        items.splice(ridx, 1, node);
+        clearSlotFocus(); // the wrap owns the cursor now
+        slotFocus.active = true;
+        slotFocus.top = ridx;
+        slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → slot content
+        slotFocus.caretIdx = 0; // empty argument: caret at its start
+        bookmarkSlot(items, slotContent);
+        // Pin the argument box itself (not just any blank in the subtree:
+        // the selected base may hold boxes of its own, e.g. an unfilled
+        // \\frac denominator wrapped into a superscript's base).
+        var si = blankIndexInArray(items, slotContent);
+        var stale = blankIds();
+        rebuildSlate(items); // sets modelBlocks = items.length (net zero)
+        caret.gap = Math.min(ridx + 1, modelBlocks); // park after the wrap
+        refreshCaret();
+        pollUntil(function () {
+            if (!queueQuiet()) { return false; }
+            var id = blankIds()[si];
+            return !!(id && stale.indexOf(id) === -1 && findShim(id));
+        }, function () {
+            var id = blankIds()[si];
+            var shim = id ? findShim(id) : null;
+            if (shim) { shim.click(); } /* user-facing, NOT a programmatic
+                arm: filling passes fillClickedSlot, which plants the durable
+                slot focus INSIDE the argument */
+            // Hold queued keystrokes until the marker lands (else a fast
+            // fill splices into the OUTER slot, the \\sqrt{b^{}2} race).
+            // Bounded at ~2 s: a clear-slate mid-arm leaves queueQuiet()
+            // false for good and would stall the pump ~15 s; the planted
+            // slot focus above already routes queued input correctly.
+            pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
+        }, 40, resumeInput);
     }
 
     // Is the currently selected slate node a fill-box (blank), not content?

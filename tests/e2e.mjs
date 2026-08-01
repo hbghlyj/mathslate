@@ -1565,6 +1565,99 @@ await page.waitForFunction(() =>
     null, { timeout: 15000 });
 console.log('    insertion renders both ∂ glyphs on the slate (U+1D715, same as real \\frac{\\partial}{\\partial}) ✓');
 
+console.log('68. selection-aware wrap: ^ _ / bind to the SELECTED block, not the last one');
+// Click the i-th top-level block like a user does (its drop-shim), then
+// wait for the selection marker. The shim only exists once MathJax
+// rendered the row, so retry inside the wait.
+async function clickTopBlock68(idx) {
+    await page.waitForFunction((i) => {
+        const rows = [...document.querySelectorAll('#mathslate-editor .mathslate-preview > div')].filter((d) => d.id);
+        if (rows.length <= i) { return false; }
+        const shim = [...document.querySelectorAll('span[id="' + rows[i].id + '"]')]
+            .find((n) => getComputedStyle(n).position === 'absolute');
+        if (!shim) { return false; }
+        shim.click();
+        return true;
+    }, idx, { timeout: 10000 });
+    await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 10000 });
+}
+async function texIs68(want) {
+    await page.waitForFunction((w) => document.getElementById('current-tex').value.replace(/\s+/g, '') === w, want, { timeout: 15000 });
+}
+async function freshSlate68() {
+    await page.click('#btn-clear-slate');
+    await page.click('main');
+    await page.waitForTimeout(250);
+}
+
+// control (no selection): the classic newest-wins wrap still takes the LAST block
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.type('^');
+await texIs68('12^{}');
+console.log('    control: "12" + ^ → "12^{}" (no selection: last block wrapped) ✓');
+
+// the report: "12", click the "1", ^ must wrap the 1 — and the argument
+// must own the cursor afterwards. The fill is typed blind on purpose (no
+// marker wait): the wrap's planted slot focus routes it either way.
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await clickTopBlock68(0);
+await page.keyboard.type('^');
+await texIs68('1^{}2');
+await page.keyboard.type('34');
+await texIs68('1^{34}2');
+console.log('    "12", select "1", ^ → "1^{}2"; typing fills the argument → "1^{34}2" ✓');
+
+// mid-slate selection: the wrap happens WHERE the selection stood
+await freshSlate68();
+await page.keyboard.type('12+3');
+await texIs68('12+3');
+await clickTopBlock68(1);
+await page.keyboard.type('_');
+await texIs68('12_{}+3');
+await page.keyboard.type('9');
+await texIs68('12_9+3');
+console.log('    "12+3", select "2", _ → "12_{}+3" (in place), fill → "12_9+3" ✓');
+
+// the / trigger on a selection wraps it into a numerator
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await clickTopBlock68(0);
+await page.keyboard.type('/');
+await texIs68('\\frac{1}{}2');
+await page.keyboard.type('5');
+await texIs68('\\frac{1}{5}2');
+console.log('    "12", select "1", / → "\\frac{1}{}2", fill → "\\frac{1}{5}2" ✓');
+
+// a nested selection (a fraction's numerator) wraps its whole top-level
+// block — and the fresh argument box, never the fraction's own boxes,
+// becomes the cursor
+await freshSlate68();
+await page.keyboard.type('1/2');
+await texIs68('\\frac{1}{2}');
+await page.waitForFunction(() => {
+    const row = [...document.querySelectorAll('#mathslate-editor .mathslate-preview > div')].filter((d) => d.id)[0];
+    if (!row) { return false; }
+    const numDiv = row.querySelector('div[id]');
+    if (!numDiv) { return false; }
+    const shim = [...document.querySelectorAll('span[id="' + numDiv.id + '"]')]
+        .find((n) => getComputedStyle(n).position === 'absolute');
+    if (!shim) { return false; }
+    shim.click();
+    return true;
+}, null, { timeout: 10000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 10000 });
+await page.keyboard.type('^');
+await texIs68('{\\frac{1}{2}}^{}');
+await page.keyboard.type('3');
+await texIs68('{\\frac{1}{2}}^3');
+console.log('    select a frac numerator, ^ → "{\\frac{1}{2}}^{}"; the fill lands in the argument, not in the frac ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

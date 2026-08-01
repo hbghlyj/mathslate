@@ -21,6 +21,16 @@ exactly like in TeX:
 | `/` | fraction of the preceding token, one token fills the denominator | `a/b` → `\frac{a}{b}`; `1/2/3` → `\frac{\frac{1}{2}}{3}` |
 | `\` | opens an **active TeX-command placeholder** (see below — including *inside* a focused structure slot); on close the name is **compiled by the toolbox TeX tool** into real math | `\alpha2` → `\alpha 2`, `\gamma` → `\gamma` — the slate then shows a real γ glyph |
 
+With a slate block **selected** (clicked), `^`, `_` and `/` wrap the
+*selection* where it stands instead of the last block: `12`, click the
+`1`, `^` gives `1^{}2` and the argument owns the cursor (`34` fills it in
+place). Selecting a *part* of a structure (a fraction's numerator) wraps
+its whole top-level block (`\frac{1}{2}` → `{\frac{1}{2}}^{}`), with the
+fill landing in the fresh argument box — never in the base's own boxes.
+Clearing the slate also drops any armed/selected box synchronously, so
+typing immediately after **Clear slate** cannot fall into a ghost
+placeholder and vanish.
+
 Script blocks **keep the cursor**: after the first fill the block stays
 "active" (green lock glow, caret anchored inside as `a^{2|}`) and every
 further character accumulates in the block — exactly the continuous input
