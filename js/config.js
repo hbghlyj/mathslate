@@ -18,6 +18,8 @@ M.tinymce_mathslate.configJSON = [
             ["mrow", {"tex":["\\geq "],"am":[" geq "]},[["mo",{},"\u2265"]]],
             ["mo",{},">"],
             ["mo",{"tex":[" \\to "]}," &rarr; "],
+            ["mo",{"tex":[" \\gets "]}," ← "],
+            ["mo",{"tex":[" \\mapsto "]}," ↦ "],
             ["br",{}],
             ["mrow", {"tex":["\\oplus "]},[["mo",{},"\u2295"]]],
             ["mrow", {"tex":["\\otimes "]},[["mo",{},"\u2297"]]],

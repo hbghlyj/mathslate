@@ -182,7 +182,14 @@ inserts `\left\|\right\|` with the first box armed, `x` fills to
 `\left\|x\right\|` with two ‖ glyphs typeset on the canvas; `x` `/` `y`
 builds `\left\|\frac{x}{y}\right\|` inside; and the typed TeX
 `\left\|y\right\|` compiles with the same delimiters.
-75 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the arrow tools and the inequality set: the
+relations tab's labels read `\to` `\gets` `\mapsto` in a row; each
+click-fills (`a` + tool + `b` → `a\to b` / `a\gets b` / `a\mapsto b`)
+with the matching arrow typeset on the canvas (→ U+2192, ← U+2190,
+↦ U+21A6); the pre-existing `\leq`/`\geq` tools click-fill to
+`a\leq b` / `a\geq b` with ≤/≥ glyphs; and the typed TeX `a \gets b`
+and `a \mapsto b` compile natively with the same arrows.
+76 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

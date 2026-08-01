@@ -177,6 +177,12 @@ MathJax 4 typesets the macro natively). It inserts like its siblings:
 first box armed as the cursor, structures like `x/y` build inside, and
 the same delimiters compile from the TeX tab.
 
+**Relation and arrow tools.** The relations tab pairs its `\to` with
+`\gets` (←) and `\mapsto` (↦), side by side in the same row; the
+inequality set `\neq`, `\leq`, `\geq` sits beside `=`, `<`, `>`. Each
+is a one-click token (`a` + button + `b` → `a \gets b`), and every one
+compiles from the TeX tab too.
+
 **Matrix tool, any size.** The toolbox's matrix button asks for its
 dimensions first — any **1×1 to 10×10** grid — and for its **brackets**:
 bare, `( )`, `[ ]`, `{ }`, `| |` or `‖ ‖`. The slate renders the chosen

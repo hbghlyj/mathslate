@@ -2398,6 +2398,86 @@ await page.waitForFunction(() =>
 console.log('    typed TeX \\left\\|y\\right\\| compiled with ‖ delimiters ✓');
 await page.click('#btn-clear-slate');
 
+console.log('76. \\gets and \\mapsto tools alongside \\to; \\leq/\\geq inequality tools');
+// step-local: click a relations-tab tool by its exact label title
+async function clickRelationTool76(title) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[1].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const s = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+            .find((x) => x.title === t);
+        if (!s) { throw new Error('tool not found: ' + t); }
+        s.closest('.yui3-dd-draggable').click();
+    }, title);
+    await page.waitForTimeout(600);
+}
+
+// 1) the arrows sit side by side with the existing \to in the label strip
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[1].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForFunction(() => {
+    const titles = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+        .map((s) => s.title);
+    const to = titles.indexOf(' \\to ');
+    return to >= 0 && titles[to + 1] === ' \\gets ' && titles[to + 2] === ' \\mapsto ';
+}, null, { timeout: 15000 });
+console.log('    labels read \\to \\gets \\mapsto in a row in the relations tab ✓');
+
+// 2) click-fills produce the exact TeX and canvas glyphs
+for (const [title, want, glyph] of [
+    [' \\to ', 'a\\tob', 'mjx-c2192'],
+    [' \\gets ', 'a\\getsb', 'mjx-c2190'],
+    [' \\mapsto ', 'a\\mapstob', 'mjx-c21A6'],
+]) {
+    await freshSlate68();
+    await page.keyboard.type('a');
+    await texIs68('a');
+    await clickRelationTool76(title);
+    await page.keyboard.type('b');
+    await texIs68(want);
+    await page.waitForFunction((c) => document.querySelectorAll('#mathslate-editor #canvas .' + c).length === 1, glyph, { timeout: 15000 });
+}
+console.log('    a + \\to/\\gets/\\mapsto + b gives a\\to b / a\\gets b / a\\mapsto b, arrows typeset ✓');
+
+// 3) the inequality set: the pre-existing \leq \geq tools click-fill the same way
+for (const [title, want, glyph] of [
+    ['\\leq ', 'a\\leqb', 'mjx-c2264'],
+    ['\\geq ', 'a\\geqb', 'mjx-c2265'],
+]) {
+    await freshSlate68();
+    await page.keyboard.type('a');
+    await texIs68('a');
+    await clickRelationTool76(title);
+    await page.keyboard.type('b');
+    await texIs68(want);
+    await page.waitForFunction((c) => document.querySelectorAll('#mathslate-editor #canvas .' + c).length === 1, glyph, { timeout: 15000 });
+}
+console.log('    a + \\leq/\\geq + b gives a\\leq b / a\\geq b with ≤/≥ typeset ✓');
+
+// 4) the typed TeX path compiles both new macros natively
+for (const [src, want, glyph] of [
+    ['a \\gets b', 'a\\getsb', 'mjx-c2190'],
+    ['a \\mapsto b', 'a\\mapstob', 'mjx-c21A6'],
+]) {
+    await freshSlate68();
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const input = document.querySelector('#mathslate-editor input[type="text"]');
+        input.value = t;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, src);
+    await texIs68(want);
+    await page.waitForFunction((c) => document.querySelectorAll('#mathslate-editor #canvas .' + c).length === 1, glyph, { timeout: 15000 });
+}
+console.log('    typed TeX a \\gets b / a \\mapsto b compiled with ←/↦ ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {
