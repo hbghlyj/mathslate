@@ -37,6 +37,18 @@ await page.waitForFunction(() => {
 }, null, { timeout: 30000 });
 console.log('   all 7 tab labels typeset on a single line (no inline line-break wraps) ✓');
 
+// the Calculus label must show the upright \nabla: the label forgot
+// mathvariant="normal" (the \nabla TOOL in the same tab has it), and while
+// MathJax 2's fonts had no italic nabla to fall back to, v4's newcm does —
+// so the label started rendering 𝛻 (U+1D6FB) after the port
+await page.waitForFunction(() => {
+    const calc = [...document.querySelectorAll('#mathslate-editor .yui3-tabview-list .yui3-tab-label')]
+        .find((l) => (l.querySelector('span[title]') || {}).title === 'Calculus');
+    if (!calc || !calc.querySelector('mjx-container')) { return false; }
+    return !!calc.querySelector('.mjx-c2207') && !calc.querySelector('.mjx-c1D6FB');
+}, null, { timeout: 30000 });
+console.log('   Calculus tab label renders the upright \\nabla (no italic variant) ✓');
+
 console.log('3. waiting for draggable tools to be registered...');
 await page.waitForFunction(
     () => document.querySelectorAll('#mathslate-editor .yui3-tabview-panel .yui3-dd-draggable').length > 20,

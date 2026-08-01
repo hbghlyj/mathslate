@@ -217,7 +217,7 @@ M.tinymce_mathslate.configJSON = [
             ["mrow",{},[["mroot",{"tex":["\\sqrt[",1,"]{ ",0," }"]},[ "[]","[]"]]]]
         ]
     },
-    {"label":"<span title='Calculus'><math><mo>&#x222B;</mo><mi>&#x2207;</mi><mi>f</mi></math></span>",
+    {"label":"<span title='Calculus'><math><mo>&#x222B;</mo><mi mathvariant='normal'>&#x2207;</mi><mi>f</mi></math></span>",
         "tools":[
             ["mfrac",{"tex":["\\frac{",0,"}{",1,"}"]},[
                  ["mrow",{},[["mi",{},["d"]], "[]" ]],

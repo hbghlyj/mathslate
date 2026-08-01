@@ -249,6 +249,10 @@ four core modules essentially verbatim and adapts around them:
   fixed-width `=⊅` toolbox tab label wrapped a glyph below the tab
   strip), `startup.typeset:false`). Webfonts load from the
   vendored `@mathjax/mathjax-newcm-font@4.1.3` copy (`vendor/fonts/`).
+  The port also exposed one content bug in the labels: the Calculus tab's
+  `<mi>∇</mi>` picked up v4's italic nabla (v2's fonts had none to fall
+  back to), so the label now sets `mathvariant="normal"`, matching the
+  `\nabla` tool itself (and checked by the suite).
 * **`js/mathjax4-shim.js`** re-expresses the v2 surface the core codes to —
   `MathJax.Hub` (`Queue`, `getAllJax`, `Typeset`, `isQuiet`, config hooks),
   `Hub.Queue`'s `['Text', jax, …]` element renderer, `MathJax.HTML.addElement`,
