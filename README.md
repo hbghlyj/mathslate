@@ -244,7 +244,10 @@ four core modules essentially verbatim and adapts around them:
   (`tex.inlineMath`/`displayMath` with the same `\( \)` / `\[ \]`
   delimiters + `processEscapes`, `options.skipHtmlTags` extended with
   `annotation`/`annotation-xml`, `chtml.displayAlign:'left'`,
-  `displayIndent:'0'`, `startup.typeset:false`). Webfonts load from the
+  `displayIndent:'0'`, `chtml.linebreaks.inline:false` (v4 breaks inline
+  math at operators by default; v2 never did — with it on, the
+  fixed-width `=⊅` toolbox tab label wrapped a glyph below the tab
+  strip), `startup.typeset:false`). Webfonts load from the
   vendored `@mathjax/mathjax-newcm-font@4.1.3` copy (`vendor/fonts/`).
 * **`js/mathjax4-shim.js`** re-expresses the v2 surface the core codes to —
   `MathJax.Hub` (`Queue`, `getAllJax`, `Typeset`, `isQuiet`, config hooks),

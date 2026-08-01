@@ -59,7 +59,13 @@
         },
         chtml: {
             displayAlign: 'left',
-            displayIndent: '0'
+            displayIndent: '0',
+            // MathJax 4 line-breaks INLINE math at operator boundaries by
+            // default (a v4 option upstream of this editor's MathJax 2
+            // heritage); the fixed-width toolbox tab labels then wrap —
+            // the '=⊅' label stacked the '⊅' under the '=', hanging a
+            // glyph below the tab strip. v2 behaviour: never break.
+            linebreaks: {inline: false}
         },
         startup: {
             typeset: false

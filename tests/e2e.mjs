@@ -23,6 +23,20 @@ console.log('   toolbox tabview present');
 const tabs = await page.$$eval('#mathslate-editor .yui3-tab-label', (els) => els.length);
 console.log('   tabs:', tabs);
 
+// tab labels must typeset on ONE line (the '=⊅' report): MathJax 4
+// line-breaks inline math at operators by default, which stacked the '⊅'
+// under the '=' and hung a glyph below the tab strip — the app's chtml
+// config sets linebreaks.inline=false (v2 behaviour)
+await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll('#mathslate-editor .yui3-tabview-list .yui3-tab-label')];
+    if (!labels.length) { return false; }
+    const containers = [...document.querySelectorAll('#mathslate-editor .yui3-tabview-list mjx-container')];
+    if (!containers.length) { return false; } // typeset not done yet
+    return containers.every((m) => m.getBoundingClientRect().height <= 26)
+        && labels.every((l) => l.scrollHeight <= l.clientHeight + 12);
+}, null, { timeout: 30000 });
+console.log('   all 7 tab labels typeset on a single line (no inline line-break wraps) ✓');
+
 console.log('3. waiting for draggable tools to be registered...');
 await page.waitForFunction(
     () => document.querySelectorAll('#mathslate-editor .yui3-tabview-panel .yui3-dd-draggable').length > 20,
