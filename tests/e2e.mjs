@@ -1471,6 +1471,51 @@ const mml65 = await page.$eval('#mathslate-editor #canvas', (el) => el.innerHTML
 if (!mml65.includes('blank')) { throw new Error('tool insert must land a live blank box on the slate'); }
 console.log('    clicking a placeholder tool lands a live blank box on the slate ✓');
 
+console.log('66. quick-access calligraphic (\\mathcal) and Fraktur (\\mathfrak) rows in the Latin tab');
+// the issue: the palette had lowercase/uppercase Greek and the blackboard
+// sets (C,N,Q,R,Z) but no calligraphic script or Fraktur rows. The Latin
+// tab now carries 26 + 26 of them, built exactly like MathJax's own TeX
+// output (<mi mathvariant="script|fraktur">A</mi>) so the canvas, the
+// label and the TeX read-out all agree.
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[3].querySelector('.yui3-tab-label, a').click();
+});
+await new Promise((r) => setTimeout(r, 800));
+await page.waitForFunction(() => {
+    const panel = document.querySelector('#mathslate-editor .yui3-tab-panel-selected');
+    if (!panel || !panel.querySelector('mjx-container')) { return false; }
+    const spans = [...panel.querySelectorAll('span[title]')];
+    const cal = spans.filter((s) => /^\\mathcal [A-Z]$/.test(s.title));
+    const frak = spans.filter((s) => /^\\mathfrak [A-Z]$/.test(s.title));
+    if (cal.length !== 26 || frak.length !== 26) { return false; }
+    // and none of them clips under the canvas (the upstream fixed-height
+    // panel hid the fifth row; panels size to content now)
+    const cr = document.querySelector('#mathslate-editor #canvas').getBoundingClientRect();
+    return spans.every((s) => s.getBoundingClientRect().bottom <= cr.top + 1);
+}, null, { timeout: 30000 });
+console.log('    26 \\mathcal + 26 \\mathfrak tools, all five Latin rows fully visible ✓');
+const clickToolByTitle = async (title) => {
+    const h = await page.evaluateHandle((t) => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        return spans.find((x) => x.title === t).closest('.yui3-dd-draggable');
+    }, title);
+    await h.asElement().click();
+};
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await clickToolByTitle('\\mathcal A');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\mathcalA', null, { timeout: 15000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mjx-c1D49C'), null, { timeout: 15000 });
+console.log('    \\mathcal A tool → slate TeX \\mathcal A, canvas typesets the script glyph (U+1D49C) ✓');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await clickToolByTitle('\\mathfrak A');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\mathfrakA', null, { timeout: 15000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mjx-c1D504'), null, { timeout: 15000 });
+console.log('    \\mathfrak A tool → slate TeX \\mathfrak A, canvas typesets the Fraktur glyph (U+1D504) ✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

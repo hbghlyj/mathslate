@@ -87,7 +87,14 @@ label across all tabs renders its blank marker as the visual box
 (`sin □`, `f(□)`, `log_□ □`, `e^□` … — zero literal `[]` labels), and
 clicking such a tool still lands a live blank box on the slate (only the
 label is display-side; the stored tool json keeps the raw marker).
-65 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the palette's quick-access script rows: the Latin tab
+carries exactly 26 `\mathcal` + 26 `\mathfrak` letter tools (A–Z), all five
+rows fully visible without clipping under the canvas (the upstream fixed
+100px panel hid the fifth row — panels now size to their content), and
+clicking `\mathcal A` / `\mathfrak A` lands `\mathcal A` / `\mathfrak A`
+in the TeX read-out with the script (U+1D49C) / Fraktur (U+1D504) glyph
+typeset on the canvas.
+66 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

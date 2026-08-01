@@ -336,3 +336,13 @@ main {
     min-width: 3.25em;
     white-space: nowrap;
 }
+
+/* The Latin-alphabet palette outgrew the upstream fixed 100px panel when
+ * the calligraphic and Fraktur rows were added: the last row clipped
+ * under the workspace. Let panels size to their content (short palettes
+ * keep the classic 100px floor); app.css loads after styles.css, so this
+ * wins without !important. */
+.mathslate-tinymce .yui3-tabview-panel {
+    height: auto;
+    min-height: 100px;
+}
