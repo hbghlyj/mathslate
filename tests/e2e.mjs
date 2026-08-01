@@ -1474,9 +1474,13 @@ console.log('    clicking a placeholder tool lands a live blank box on the slate
 console.log('66. quick-access calligraphic (\\mathcal) and Fraktur (\\mathfrak) rows in the Latin tab');
 // the issue: the palette had lowercase/uppercase Greek and the blackboard
 // sets (C,N,Q,R,Z) but no calligraphic script or Fraktur rows. The Latin
-// tab now carries 26 + 26 of them, built exactly like MathJax's own TeX
-// output (<mi mathvariant="script|fraktur">A</mi>) so the canvas, the
-// label and the TeX read-out all agree.
+// tab now carries 26 + 26 of them, built exactly like MathJax 4's own TeX
+// output for those macros — \mathcal{A}'s <mi> carries
+// data-mjx-variant="-tex-calligraphic" ON TOP OF mathvariant="script"
+// (plain script is only what \mathscr gets — without the internal
+// variant the canvas showed the Unicode script alphabet, not the classic
+// calligraphic one), \mathfrak{A}'s just mathvariant="fraktur" — so the
+// canvas, the label and the TeX read-out all agree with the real macros.
 await page.evaluate(() => {
     document.querySelectorAll('#mathslate-editor .yui3-tab')[3].querySelector('.yui3-tab-label, a').click();
 });
@@ -1506,8 +1510,8 @@ await page.click('main');
 await new Promise((r) => setTimeout(r, 250));
 await clickToolByTitle('\\mathcal A');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\mathcalA', null, { timeout: 15000 });
-await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .mjx-c1D49C'), null, { timeout: 15000 });
-console.log('    \\mathcal A tool → slate TeX \\mathcal A, canvas typesets the script glyph (U+1D49C) ✓');
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor #canvas .NCM-C'), null, { timeout: 15000 });
+console.log('    \\mathcal A tool → slate TeX \\mathcal A, canvas typesets the true calligraphic alphabet (NCM-C, like a real \\mathcal{A}) ✓');
 await page.click('#btn-clear-slate');
 await page.click('main');
 await new Promise((r) => setTimeout(r, 250));

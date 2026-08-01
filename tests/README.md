@@ -92,8 +92,10 @@ carries exactly 26 `\mathcal` + 26 `\mathfrak` letter tools (A–Z), all five
 rows fully visible without clipping under the canvas (the upstream fixed
 100px panel hid the fifth row — panels now size to their content), and
 clicking `\mathcal A` / `\mathfrak A` lands `\mathcal A` / `\mathfrak A`
-in the TeX read-out with the script (U+1D49C) / Fraktur (U+1D504) glyph
-typeset on the canvas.
+in the TeX read-out with the true calligraphic alphabet (the
+`data-mjx-variant="-tex-calligraphic"` internal variant — what MathJax 4's
+own TeX jax emits for `\mathcal{A}`, distinct from plain `script`) / the
+Fraktur glyph (U+1D504) typeset on the canvas.
 66 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
