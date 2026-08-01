@@ -37,6 +37,22 @@ await page.waitForFunction(() => {
 }, null, { timeout: 30000 });
 console.log('   all 7 tab labels typeset on a single line (no inline line-break wraps) ✓');
 
+// …and no label's math may protrude past its tab box (the 'tan ∠' report):
+// the upstream stylesheet fixes labels at 3.25em, and once MathJax 4
+// stopped wrapping/shrinking label math, 'tan ∠' stuck ~7px out over the
+// next tab — app.css sizes the labels to their content (floor: 3.25em)
+await page.waitForFunction(() => {
+    const lis = [...document.querySelectorAll('#mathslate-editor .yui3-tabview-list > li')];
+    if (!lis.length || !lis[0].querySelector('mjx-container')) { return false; }
+    return lis.every((li) => {
+        const mjx = li.querySelector('mjx-container');
+        const lb = li.getBoundingClientRect();
+        const mb = mjx.getBoundingClientRect();
+        return mb.right <= lb.right + 1 && mb.left >= lb.left - 1;
+    });
+}, null, { timeout: 30000 });
+console.log('   no tab label protrudes past its tab box (tan\\angle overlap fixed) ✓');
+
 // the Calculus label must show the upright \nabla: the label forgot
 // mathvariant="normal" (the \nabla TOOL in the same tab has it), and while
 // MathJax 2's fonts had no italic nabla to fall back to, v4's newcm does —
@@ -1154,6 +1170,22 @@ await page.waitForFunction(() => {
     return Math.abs(c.left - b.right) < 6 && Math.abs(c.top - b.top) < 6;
 }, null, { timeout: 15000 });
 console.log('    the launch caret hugs the decoy box inside #canvas (not the preview panel) ✓');
+// …and the launch box must be CENTRED, not bottom-left: the editor's
+// first canvas render requested display:block math (left-justified under
+// the app's displayAlign config) while every re-render after it used
+// inline math, so the box snapped to centre on the first keystroke; the
+// first render is inline now
+await page.waitForFunction(() => {
+    const blank = document.querySelector('#mathslate-editor #canvas mjx-mo.blank');
+    const canvas = document.querySelector('#mathslate-editor #canvas');
+    const mjx = document.querySelector('#mathslate-editor #canvas mjx-container');
+    if (!blank || !canvas || !mjx) { return false; }
+    const b = blank.getBoundingClientRect();
+    const c = canvas.getBoundingClientRect();
+    return mjx.getAttribute('display') !== 'true'
+        && Math.abs(b.x + b.width / 2 - (c.x + c.width / 2)) < 10;
+}, null, { timeout: 15000 });
+console.log('    the empty slate typesets inline; box+caret launch centred in the workspace ✓');
 // the report's sequence, typed with NO click anywhere
 await page.keyboard.type('\\sqrt');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });

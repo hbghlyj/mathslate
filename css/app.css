@@ -325,3 +325,14 @@ main {
 #mathslate-editor .mathslate-workspace:focus {
     outline: none;
 }
+
+/* The upstream stylesheet fixes tab labels at 3.25em; with MathJax 4's
+ * unshrunk label math (overflow="overflow", no v2-era downscale) the
+ * wider labels — 'tan ∠' above all — protrude over the next tab's box.
+ * Size the labels to their content instead, keeping the upstream width
+ * as the floor so short labels don't shrink. */
+.mathslate-tinymce .mathslate-toolbox .yui3-tab-label {
+    width: auto;
+    min-width: 3.25em;
+    white-space: nowrap;
+}

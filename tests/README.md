@@ -2,7 +2,10 @@
 
 Loads the app in headless Chromium (via `playwright-core`), lets the toolbox render,
 clicks tools, exercises Insert/Copy/Clear, the TeX input tab, help, undo, export and
-the `file://` boot path. Keyboard coverage includes the literal character set, the
+the `file://` boot path. The toolbox tab strip is asserted healthy after the
+MathJax 4 label regressions: all 7 labels typeset on a single line (no inline
+line-break wraps), no label's math protrudes past its tab box (the `tan ∠`
+overlap), and the Calculus label's `\nabla` is the upright variant. Keyboard coverage includes the literal character set, the
 `^` / `_` / `/` TeX triggers, and the `\` TeX-command placeholder's three states:
 activation with cursor lock (arrow keys captured), the active wrapper visuals
 (marker class, highlighted monospace token, dashed cursor outline), and closing by
@@ -47,7 +50,9 @@ the slate CANVAS itself is `document.activeElement` from launch
 (`tabindex="-1"`, focused at boot) — and the launch caret hugs the decoy
 box inside `#canvas` (absolute anchor; the empty slate's MathJax
 container is block-level, so an in-flow caret would wrap down into the
-preview panel). `\sqrt` `Space` `b` typed with no
+preview panel) — and that very box launches CENTRED in the workspace
+(the editor's first render is inline math now, not display-mode, so there
+is no bottom-left → centre snap on the first keystroke). `\sqrt` `Space` `b` typed with no
 click lands on the slate with the caret anchored inside the radical, and a
 slate mousedown hands DOM focus back to the slate canvas from the field.
 Step 61 checks that an arrow out of an ARMED-BUT-EMPTY script

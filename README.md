@@ -200,7 +200,7 @@ The editor core (`js/mathslate/*.js`, `css/styles.css`, `help.html`,
 | File | Change |
 | --- | --- |
 | `js/mathslate/editor.js` | Accepts the tool config as a JS object (`M.tinymce_mathslate.configJSON` from `js/config.js`) in addition to a URL fetched with `Y.io`. Enables `file://` use. |
-| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. And for the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). |
+| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. For the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). And the FIRST canvas render requests inline math instead of `display="block"` (under the app's `displayAlign:'left'` config a display-mode first render left-justified the empty slate's placeholder box at the canvas's bottom-left until the first keystroke re-rendered it centred; marked `Standalone app (documented patch)`). |
 | `js/mathslate/textool.js` | The TeX tool's input no longer takes DOM focus at construction: the standalone app wants the *workspace* focused at launch, so the first keystrokes land on the slate (marked `Standalone app (documented patch)`). |
 | `plugin.js` / `mathslate.html` / `yui/build/*dialogue*` | **Dropped.** The TinyMCE plugin wrapper and Moodle dialogue module are replaced by `js/app.js`, which owns the "document" and the Insert/Copy/Clear actions that used to live on TinyMCE's dialogue buttons. |
 | `index.html`, `js/app.js`, `js/config.js`, `css/app.css`, `js/mathjax4-shim.js` | **New.** App shell, document model (source textarea + MathJax-rendered pane), clipboard/export helpers, keyboard entry of the literal character set, inlined config, and the MathJax v2-to-v4 API shim. |
@@ -252,7 +252,10 @@ four core modules essentially verbatim and adapts around them:
   The port also exposed one content bug in the labels: the Calculus tab's
   `<mi>∇</mi>` picked up v4's italic nabla (v2's fonts had none to fall
   back to), so the label now sets `mathvariant="normal"`, matching the
-  `\nabla` tool itself (and checked by the suite).
+  `\nabla` tool itself (and checked by the suite). And with label math no
+  longer wrapped or shrunk, the fixed `3.25em` label width made `tan∠`
+  protrude across the next tab — `css/app.css` sizes the tab labels to
+  their content (`min-width: 3.25em`) instead.
 * **`js/mathjax4-shim.js`** re-expresses the v2 surface the core codes to —
   `MathJax.Hub` (`Queue`, `getAllJax`, `Typeset`, `isQuiet`, config hooks),
   `Hub.Queue`'s `['Text', jax, …]` element renderer, `MathJax.HTML.addElement`,

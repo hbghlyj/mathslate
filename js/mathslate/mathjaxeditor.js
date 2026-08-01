@@ -334,7 +334,13 @@ NS.MathJaxEditor = function(id) {
             });
         } else {
             canvas.get('node').setHTML('');
-            MathJax.Hub.Queue(['addElement', MathJax.HTML, canvas.get('node').getDOMNode(), 'math', {display: "block"}, math]);
+            // Standalone app (documented patch): the FIRST canvas render
+            // matches the steady-state re-render above — inline math, not
+            // display:block. With MathJax 4's displayAlign:'left' config
+            // here, a display-mode first render justified the empty
+            // slate's placeholder box to the container's bottom-left, and
+            // it snapped back to the centre on the first keystroke.
+            MathJax.Hub.Queue(['addElement', MathJax.HTML, canvas.get('node').getDOMNode(), 'math', {display: "inline"}, math]);
             MathJax.Hub.Queue(["Typeset", MathJax.Hub, canvas.get('node').getDOMNode()]);
             MathJax.Hub.Queue(makeDraggable);
         }
