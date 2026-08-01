@@ -259,6 +259,7 @@ M.tinymce_mathslate.configJSON = [
             ["mrow",{"tex":["\\left[",1,"\\right]"]},[["mo",{},"["], "[]", ["mo",{},"]"]]],
             ["mrow",{"tex":["\\left{",1,"\\right}"]},[["mo",{},"{"], "[]", ["mo",{},"}"]]],
             ["mrow",{"tex":["\\left|",1,"\\right|"]},[["mo",{},"|"], "[]", ["mo",{},"|"]]],
+            ["mrow",{"tex":["\\left\\|",1,"\\right\\|"]},[["mo",{},"‖"], "[]", ["mo",{},"‖"]]],
             ["mrow", {"tex":["\\matrix{",0,"}"]},[["mtable", {"rowspacing":"4pt","columnspacing":"1em"},[
                 ["mtr",{},[
                   ["mtd",{},[["mrow",{},[ "[]"]]]],

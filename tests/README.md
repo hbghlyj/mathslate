@@ -176,7 +176,13 @@ exits before its parens the same way; a fraction typed inside a cell
 peels back into the cell content on `→` and then hops to the next
 cell; and multi-token typed fills in the `&`/`\\`-templated cells
 serialize whole (`\matrix{4&19\\27&}`).
-74 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the norm bracket tool: the `\left\|◻\right\|` label
+renders in the roots-and-brackets tab beside `\left|◻\right|`; clicking
+inserts `\left\|\right\|` with the first box armed, `x` fills to
+`\left\|x\right\|` with two ‖ glyphs typeset on the canvas; `x` `/` `y`
+builds `\left\|\frac{x}{y}\right\|` inside; and the typed TeX
+`\left\|y\right\|` compiles with the same delimiters.
+75 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

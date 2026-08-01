@@ -2336,6 +2336,68 @@ await texIs68('\\matrix{4&19\\\\27&}');
 console.log('    typed 19 and 27 into templated cells — every token serialized ✓');
 await page.click('#btn-clear-slate');
 
+console.log('75. norm delimiter tool: \\left\\|…\\right\\| alongside the other \\left brackets');
+// step-local: click a roots&brackets tool by its exact label title
+async function clickBracketTool75(title) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[5].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const s = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+            .find((x) => x.title === t);
+        if (!s) { throw new Error('tool not found: ' + t); }
+        s.closest('.yui3-dd-draggable').click();
+    }, title);
+}
+
+// 1) the tool sits in the tab with the bracket family, label ◻ boxed
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[5].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForFunction(() => {
+    const titles = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+        .map((s) => s.title);
+    return titles.includes('\\left\\|◻\\right\\|')
+        && titles.includes('\\left|◻\\right|'); // the abs tool is still there
+}, null, { timeout: 15000 });
+console.log('    \\left\\|◻\\right\\| label renders next to \\left|◻\\right| in the tab ✓');
+
+// 2) click inserts with the first box armed; fill lands inside the norm
+await freshSlate68();
+await clickBracketTool75('\\left\\|◻\\right\\|');
+await texIs68('\\left\\|\\right\\|');
+await page.keyboard.type('x');
+await texIs68('\\left\\|x\\right\\|');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c2016').length === 2,
+    null, { timeout: 15000 });
+console.log('    insert + fill x → \\left\\|x\\right\\| with ‖ delimiters typeset ✓');
+
+// 3) an in-slot structure wraps inside the norm
+await page.keyboard.press('/');
+await page.keyboard.type('y');
+await texIs68('\\left\\|\\frac{x}{y}\\right\\|');
+console.log('    x / y inside → \\left\\|\\frac{x}{y}\\right\\| ✓');
+
+// 4) the typed TeX path compiles the same delimiters (MathJax 4 supports \\|)
+await freshSlate68();
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(400);
+await page.evaluate(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    input.value = '\\left\\|y\\right\\|';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await texIs68('\\left\\|y\\right\\|');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c2016').length === 2,
+    null, { timeout: 15000 });
+console.log('    typed TeX \\left\\|y\\right\\| compiled with ‖ delimiters ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

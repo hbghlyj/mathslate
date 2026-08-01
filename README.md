@@ -170,6 +170,13 @@ the block's end, so a `\frac{□}{□}` fills numerator-then-denominator
 without any clicking between. Typed `\frac`-style commands that need
 arguments behave the same way (and always did).
 
+**Bracket tools.** The roots-and-brackets tab's `\left…\right` wrappers —
+`( )`, `[ ]`, `{ }`, `| |` — are joined by the double-bar **norm**
+wrapper `\left\|…\right\|` (‖ on the slate, `\|` in the TeX;
+MathJax 4 typesets the macro natively). It inserts like its siblings:
+first box armed as the cursor, structures like `x/y` build inside, and
+the same delimiters compile from the TeX tab.
+
 **Matrix tool, any size.** The toolbox's matrix button asks for its
 dimensions first — any **1×1 to 10×10** grid — and for its **brackets**:
 bare, `( )`, `[ ]`, `{ }`, `| |` or `‖ ‖`. The slate renders the chosen
