@@ -647,6 +647,11 @@
             }
             cancelScript();
             if (hasSlateSelection()) { deselectSlate(); }
+            if (slotFocus.active) { // Esc lets the slot go: close its box too
+                var escItems = topItems();
+                stripSlotAnchorBox(resolveSlotArr(escItems));
+                rebuildSlate(escItems);
+            }
             clearSlotFocus();
             pumpInput();
             return;
@@ -692,6 +697,7 @@
                     } else {
                         var parent = navArr ? parentSlotOf(navItems, navArr) : null;
                         if (parent) {
+                            stripSlotAnchorBox(navArr); // close the exited slot
                             ensureSlotBox(parent.arr);
                             slotFocus.path = parent.path;
                             slotFocus.caretIdx = parent.before + (evt.value === 1 ? 1 : 0);
@@ -699,6 +705,7 @@
                             rebuildSlate(navItems); // heal the destructive read
                         } else {
                             var at = slotFocus.top;
+                            stripSlotAnchorBox(navArr); // close the exited slot
                             clearSlotFocus();
                             rebuildSlate(navItems); // heal the destructive read
                             caret.gap = Math.max(0, Math.min(evt.value === -1 ? at : at + 1, modelBlocks));
@@ -1510,6 +1517,16 @@
         if (!arr.length || !isBlankNode(arr[arr.length - 1])) { arr.push('[]'); }
     }
 
+    // …and the trailing box dies with the focus. It only ever was the
+    // caret's socket + next fill's click target; left behind after an
+    // exit it renders as a stray placeholder behind the slot's content
+    // (the "b^{2□}" the report showed after → out of the superscript).
+    // A slot holding NOTHING but the box is the structure's own empty
+    // argument affordance (\sqrt{}, e^{}) — that one stays.
+    function stripSlotAnchorBox(arr) {
+        if (arr && arr.length > 1 && isBlankNode(arr[arr.length - 1])) { arr.pop(); }
+    }
+
     // Pre-order index (blankIds() order) of the LAST blank that lives
     // inside the content array found by identity — the slot's own
     // trailing box under the trailing-box convention (-1 when there is
@@ -1642,11 +1659,15 @@
         deselectSlate(); // heal rule: clear selections before clear()s
         programmaticArmIdx = -1; // its marker died with the deselect above
         var items = topItems(); // destructive read, healed below
+        var oldSlotArr = slotFocus.active ? resolveSlotArr(items) : null;
         visitBlank(items, si, function (arr, i) {
             arr[i] = JSON.parse(json);
             filled = arr;
         });
         if (!filled) { rebuildSlate(items); return false; } // heal the read
+        if (oldSlotArr && oldSlotArr !== filled) {
+            stripSlotAnchorBox(oldSlotArr); // the focus moved: close the old socket
+        }
         ensureSlotBox(filled); // the caret's socket (and next fill's home)
         setSlotFocusFromItems(items, filled);
         rebuildSlate(items);
@@ -1768,6 +1789,7 @@
         var tokIdx = arr ? slotTokenIndices(arr) : [];
         var bi = Math.min(Math.max(slotFocus.caretIdx, 0), tokIdx.length) - 1;
         if (!arr || bi < 0) { // no base left of the caret: leave it, top-level
+            if (arr) { stripSlotAnchorBox(arr); } // the focus leaves the slot
             rebuildSlate(items); // heal the destructive read first
             clearSlotFocus();
             startScript(kind); // resumes the pump itself
@@ -1776,6 +1798,10 @@
         var base = arr[tokIdx[bi]];
         var node = [job.tag, {tex: job.tex}, [base, '[]']];
         arr.splice(tokIdx[bi], 1, node);
+        // The fresh argument box is the cursor now (the trailing-box
+        // convention's own wording): the slot's old socket closes, so the
+        // only visible box while the argument fills is the argument's.
+        stripSlotAnchorBox(arr);
         slotFocus.caretIdx = bi + 1; // caret sits right after the structure
         bookmarkSlot(items, arr); // the fresh argument box shifted blanks
         var si = blankIndexInArray(items, node[2]); // the fresh argument box

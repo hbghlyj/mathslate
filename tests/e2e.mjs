@@ -1183,6 +1183,64 @@ await page.waitForFunction(() => {
 }, null, { timeout: 15000 });
 console.log('    ← parked before the block with a live caret; "x" landed before it →', JSON.stringify(await texNS()), '✓');
 
+console.log('62. → out of a superscript slot CLOSES its placeholder box (the \\sqrt{b^2} report)');
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('\\sqrt');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 30000 });
+await page.keyboard.type('b');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 20000 });
+await page.keyboard.type('^');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^{}}', null, { timeout: 30000 });
+// while the argument is armed, its box is the only box on the slate
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 15000 });
+await page.keyboard.type('2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 20000 });
+// the focused superscript keeps exactly ONE box: the caret's socket
+await page.waitForFunction(() => {
+    const blanks = document.querySelectorAll('#mathslate-editor #canvas mjx-mo.blank');
+    if (blanks.length !== 1) { return false; }
+    return !!blanks[0].closest('mjx-msup');
+}, null, { timeout: 15000 });
+console.log('    focused superscript shows exactly one box (its socket) ✓');
+// the bug: → moved the caret past the exponent but left the placeholder
+// box visible behind the 2 — the container must close with the exit
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() => {
+    let inSup = 0;
+    document.querySelectorAll('#mathslate-editor #canvas mjx-msup')
+        .forEach((m) => { inSup += m.querySelectorAll('mjx-mo.blank').length; });
+    return inSup === 0
+        && document.querySelectorAll('#mathslate-editor #canvas mjx-mo.blank').length === 1
+        && !!document.querySelector('.mathslate-caret');
+}, null, { timeout: 15000 });
+console.log('    → closed the superscript box; the radicand keeps the live focus ✓');
+await page.keyboard.type('-');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2-}', null, { timeout: 20000 });
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas mjx-mo.blank').length === 0
+    && !!document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
+await page.keyboard.type('q');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2-}q', null, { timeout: 20000 });
+console.log('    released to the slate with zero stray boxes; "q" at top level →', JSON.stringify(await texNS()), '✓');
+// Esc while focused closes the socket as well
+await page.click('#btn-clear-slate');
+await page.click('main');
+await new Promise((r) => setTimeout(r, 250));
+await page.keyboard.type('\\sqrt');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{}', null, { timeout: 30000 });
+await page.keyboard.type('b^2');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 30000 });
+await page.keyboard.press('Escape');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas mjx-mo.blank').length === 0
+    && !!document.querySelector('.mathslate-caret'), null, { timeout: 15000 });
+console.log('    Esc let the slot go and closed its box too ✓');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

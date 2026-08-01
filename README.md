@@ -98,7 +98,12 @@ and everything typed afterwards continues inside it —
 - `Backspace` deletes inside the slot and, at an empty slot (or at the
   slot's left edge), steps out instead of eating the structure;
 - exits are always explicit: `Esc`, an arrow step past an edge, or
-  clicking other content.
+  clicking other content — and every exit **closes the slot's placeholder
+  box** behind it: the trailing box only ever was the caret's socket (and
+  the next fill's click target), so `\\sqrt{b^2}` then `→` leaves a clean
+  `b^2` with no stray box behind the `2`. A slot holding nothing but the
+  box keeps it — that one is the structure's own empty-argument affordance
+  (`\\sqrt{}`, `e^{}`).
 
 **Focus discipline.** The slate owns DOM focus from the moment the app
 opens (the TeX tool's field does not steal it), so typing starts working
@@ -286,7 +291,7 @@ exits (including the arrow over an armed-but-empty block: the caret
 re-anchors at top level, `e^` `→` `x` → `e^{}x`), replace-on-selection
 typing, the Backspace-no-navigation audit, and
 the brace-stripping TeX rule (single-character script arguments and bases).
-All 61 numbered steps are green under MathJax 4.1 (CHTML output) with no
+All 62 numbered steps are green under MathJax 4.1 (CHTML output) with no
 console errors, stable across repeated consecutive runs. See
 `tests/README.md`.
 
