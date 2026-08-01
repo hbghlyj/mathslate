@@ -1109,6 +1109,12 @@ await page.waitForFunction(() => {
     return input && document.activeElement !== input;
 }, null, { timeout: 15000 });
 console.log('    TeX tool input does not hold launch focus ✓');
+// …and neither does the bare page body ("main workspace gains focus"):
+// the SLATE canvas itself is the DOM focus owner from launch
+await page.waitForFunction(() =>
+    document.activeElement === document.querySelector('#mathslate-editor #canvas')
+    && document.activeElement !== document.body, null, { timeout: 15000 });
+console.log('    the slate canvas itself owns DOM focus at launch (not the page body) ✓');
 // the report's sequence, typed with NO click anywhere
 await page.keyboard.type('\\sqrt');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt', null, { timeout: 20000 });
@@ -1135,11 +1141,11 @@ await page.evaluate(() => {
         .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 });
 await page.waitForFunction(() =>
-    document.activeElement !== document.querySelector('#mathslate-editor input[type="text"]'), null, { timeout: 15000 });
+    document.activeElement === document.querySelector('#mathslate-editor #canvas'), null, { timeout: 15000 });
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b}', null, { timeout: 10000 });
 await page.keyboard.type('x');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{bx}', null, { timeout: 20000 });
-console.log('    slate mousedown reclaimed DOM focus; typing continued in the slot →', JSON.stringify(await texNS()), '✓');
+console.log('    slate mousedown handed DOM focus to the slate canvas; typing continued in the slot →', JSON.stringify(await texNS()), '✓');
 
 console.log('61. → out of an armed-but-empty script block re-anchors the caret at top level');
 await page.click('#btn-clear-slate');

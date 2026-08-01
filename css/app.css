@@ -317,3 +317,11 @@ main {
 .mathslate-tinymce mjx-container {
     outline: none;
 }
+
+/* The slate canvas holds DOM focus from launch (js/app.js focusSlate);
+ * the blinking caret is the app's focus indicator, so the browser's
+ * default focus outline on the workspace is suppressed to keep the
+ * launch visuals unchanged. */
+#mathslate-editor .mathslate-workspace:focus {
+    outline: none;
+}

@@ -106,11 +106,15 @@ and everything typed afterwards continues inside it —
   (`\\sqrt{}`, `e^{}`).
 
 **Focus discipline.** The slate owns DOM focus from the moment the app
-opens (the TeX tool's field does not steal it), so typing starts working
-immediately with no click; and a click anywhere in the editor reclaims
-DOM focus from whatever form control held it (the TeX field, the document
-textarea — even on browsers that keep inputs focused across outside
-clicks), so keystrokes always follow the visible caret.
+opens — literally: the slate canvas is programmatically focusable
+(`tabindex="-1"`, so no new tab stop) and `document.activeElement` is the
+canvas at launch, not the page body and not the TeX tool's field — so
+typing starts working immediately with no click; and a click anywhere in
+the editor reclaims DOM focus **for the slate** from whatever form control
+held it (the TeX field, the document textarea — even on browsers that
+keep inputs focused across outside clicks), so keystrokes always follow
+the visible caret. The blinking caret is the app's focus indicator, so
+the browser's default focus outline on the workspace is suppressed.
 
 The focus lives as a pure closure address (owning top-level block + JSON
 path into the slot's content array + intra-slot token index + the trailing

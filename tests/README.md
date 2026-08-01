@@ -42,9 +42,11 @@ exponent: `\sqrt{b^{24}}`), and `→` peels exactly one slot level out
 `-` yields `\sqrt{b^{24}-}`; the next `→` leaves to the slate — `←` peels
 leftwards the same way).
 Step 60 reloads the page and checks launch behaviour: the TeX
-tool's input must not hold DOM focus, `\sqrt` `Space` `b` typed with no
+tool's input must not hold DOM focus, the bare page body must not either —
+the slate CANVAS itself is `document.activeElement` from launch
+(`tabindex="-1"`, focused at boot) — `\sqrt` `Space` `b` typed with no
 click lands on the slate with the caret anchored inside the radical, and a
-slate mousedown reclaims DOM focus from the field again.
+slate mousedown hands DOM focus back to the slate canvas from the field.
 Step 61 checks that an arrow out of an ARMED-BUT-EMPTY script
 block (`e^` then `→`/←, before any fill) cancels the pending script and
 re-anchors the caret at the top level — after the block for `→` (`x`

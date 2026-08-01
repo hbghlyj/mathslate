@@ -264,6 +264,27 @@
         if (ae && isFormTarget(ae) && ae.blur) { ae.blur(); }
     }
 
+    // Hand DOM focus to the SLATE element itself (the canvas). Merely
+    // blurring every form control leaves document.activeElement on the
+    // page body — "the main workspace gains focus at launch", as the
+    // report put it; the slate should be the focus owner instead. The
+    // canvas gets tabindex="-1" (programmatically focusable, not a new
+    // tab stop), and focus() is guarded + preventScroll so boot never
+    // jumps the page. Key routing is document-level and accepts any
+    // non-form target, so typing is unaffected; browsers without
+    // div-focus-on-click (Safari) get the same state via this call.
+    function focusSlate() {
+        var slateEl = document.querySelector('#mathslate-editor #canvas');
+        if (!slateEl) { return; }
+        if (!slateEl.hasAttribute('tabindex')) {
+            slateEl.setAttribute('tabindex', '-1');
+        }
+        if (document.activeElement !== slateEl && slateEl.focus) {
+            try { slateEl.focus({ preventScroll: true }); }
+            catch (e) { slateEl.focus(); }
+        }
+    }
+
     function wireCaretFocus() {
         watchCanvasCaret();
         document.addEventListener('focusin', function (e) {
@@ -278,16 +299,17 @@
                 // field stays focused across outside clicks on some
                 // browsers — and would keep swallowing keystrokes).
                 if (script.locked) { exitScript(); }
-                if (!isFormTarget(e.target)) { blurFormFocus(); }
+                if (!isFormTarget(e.target)) { blurFormFocus(); focusSlate(); }
                 slateFocused = true;
                 refreshCaret();
             }
         });
         // Normalize launch focus: nothing (a restored form field, a
         // browser autofocus quirk, construction-time focusing) should own
-        // DOM focus before the user has chosen a target — the slate is
-        // the target until then.
+        // DOM focus before the user has chosen a target — and the SLATE,
+        // not the page body, is that target from the start.
         blurFormFocus();
+        focusSlate();
         window.addEventListener('blur', refreshCaret);
         window.addEventListener('focus', refreshCaret);
         window.addEventListener('scroll', refreshCaret);
