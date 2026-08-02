@@ -193,12 +193,14 @@ The final step pins the script-block arrow-entry report: `a^2`, `→` out,
 then `←` steps INTO the superscript (model untouched, one socket box) and
 `3` fills `a^{23}`; `←`×3 parks at the base's end (`x` grows the base →
 `{ax}^{23}`) and `←`×3 more walks the base and releases before the block
-with the socket shed (`y` → `y{ax}^{23}`); `→` over the block stays one
-whole-block step (`q` → `y{ax}^{23}q`); msub enters the same way
+with the socket shed (`y` → `y{ax}^{23}`); `→` from there parks at the
+base end — mirror of the `←` entry (step 80 pins the full chain) — so
+`q` grows the base (`y{axq}^{23}`) and the next `→` roundtrips into the
+script's start (`w` → `y{axq}^{w23}`); msub enters the same way
 (`b_3` ← `4` → `b_{34}`); an empty argument re-arms as its box
 (`e^{}` ← `f` → `e^f`); and a plain neighbour token still gets a plain
 block-step (`12` ← `x` → `1x2`).
-The final step pins the left-arrow-skips-the-base report: `a^2` then
+Step 78 pins the left-arrow-skips-the-base report: `a^2` then
 `←` (`a^{|2}`, still locked) then `←` parks *between* the base and the
 script (`a|^{2}`, model untouched, one socket box) — never at the
 block's front — and `x` grows the base (`{ax}^2`); `→` from the park
@@ -208,7 +210,7 @@ parks the same way for subscripts (`4` → `{b4}_3`). (Steps 46, 59 and
 the base park and back in on `→`; step 59's radical walk now grows the
 base inside `\sqrt{b^2}`; step 77 chains the entered-slot walk onto the
 base's end.)
-The final step pins the caret-pathway binding report: with the free caret
+Step 79 pins the caret-pathway binding report: with the free caret
 mid-slate, `^`/`_`/`/` bind the block LEFT of the caret in place —
 `12` `←` `^` wraps the 1, never the last block, and fills land inside
 (`34` → `1^{34}2`); each step deeper binds its own left neighbour
@@ -217,7 +219,20 @@ fractionates the left block (`y` → `\frac{1}{y}2`); and parked before the
 first block the wrap inserts there with a blank base
 (`12` `←` `←` `^` `x` → `{}^x12`). (The click-selection pathway of the
 same report is item 21, pinned by step 68.)
-79 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the symmetrical-right-arrow report: with the free caret
+immediately left of a script block, `→` steps **into** the block — parked
+at the base's end, model untouched, one socket box — instead of skipping
+the structure whole; typing grows the base (`a^2` front `→` `x` →
+`{ax}^2`), the next `→` roundtrips into the argument's start
+(`z` → `{ax}^{z2}`), and stepping through it exits right
+(`w` → `{ax}^{z2}w`); msub parks the same way (`b_3` front `→` `4` →
+`{b4}_3`); a *blank* base keeps the whole-block step
+(`{}^x12` front `→` `y` → `{}^xy12`); a mid-row park keeps fills in the
+slot — the gap is not a cursor while a slot focus lives —
+(`a^2bc` front `→` `q` → `{aq}^2bc`, and continuation typing accumulates:
+`123` `←` `←` `_` `x` `y` → `1_{xy}23`); plain neighbours still get a
+plain step (`12` `←` `→` `x` → `12x`).
+80 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

@@ -1148,7 +1148,11 @@
                 modelBlocks++;
             }
             caretEnd();
-        } else if (!hasSlateSelection() && caret.gap < modelBlocks) {
+        } else if (!hasSlateSelection() && !slotFocus.active && caret.gap < modelBlocks) {
+            // mid-slate FREE-caret splice — only the free caret owns the
+            // gap: while a slot focus lives (a parked script base, a
+            // planted argument) the caret's home is the slot even when
+            // its block sits mid-row, and the fill branches below decide
             var items = topItems();
             items.splice(caret.gap, 0, json);
             rebuildSlate(items); // sets modelBlocks = items.length
@@ -1519,16 +1523,17 @@
             refreshCaret();
             return;
         }
-        // ← stepping ONTO a script block (msup/msub/msubsup) from the right
-        // peels INTO its script slot — parked at the slot's END — instead of
-        // skipping the whole block to before its base (the "a^2, →, then ←
-        // jumps to the left of a" report). The slot-focus machinery takes
-        // over from there: more ← walks the slot's tokens, typing lands
-        // inside, and a final ← at the slot's start releases the caret to
-        // before the block through the usual peel. → over a script block
-        // stays a whole-block step: the interior has no left-edge landing
-        // spot (the base IS the block, the script sits up at the right).
-        if (dir < 0 && caret.gap > 0 && caret.gap <= modelBlocks) {
+    // ← stepping ONTO a script block (msup/msub/msubsup) from the right
+    // peels INTO its script slot — parked at the slot's END — instead of
+    // skipping the whole block to before its base (the "a^2, →, then ←
+    // jumps to the left of a" report). The slot-focus machinery takes
+    // over from there: more ← walks the slot's tokens, typing lands
+    // inside, at the slot's start a further ← parks between base and
+    // script, and a final ← releases the caret to before the block
+    // through the usual peel. → over a script block is the mirror: it
+    // parks between the base and the script (the base IS the block's
+    // first run of content) instead of skipping the structure whole.
+    if (dir < 0 && caret.gap > 0 && caret.gap <= modelBlocks) {
             var entryItems = topItems();
             var entry = scriptSlotEntry(entryItems, caret.gap - 1);
             if (entry) {
@@ -1542,6 +1547,18 @@
                 refreshCaret();
                 return;
             }
+        }
+        // → stepping ONTO a script block from the left parks the caret
+        // between the base and the script — the base's END as a slot
+        // focus, exactly the park ← reaches by walking through the script
+        // slot (the "asymmetrical right arrow" report: it used to skip
+        // the structure whole). Typing there extends the base, ← walks
+        // back out through the base, and the next → roundtrips into the
+        // script slot's start through fracSiblingSlot's base⇄script
+        // chain — the same positions the ← walk visits, in reverse.
+        if (dir > 0 && caret.gap < modelBlocks) {
+            var itemsR = topItems();
+            if (parkAtScriptBase(itemsR, caret.gap)) { return; }
         }
         caret.gap = Math.max(0, Math.min(caret.gap + dir, modelBlocks));
         refreshCaret();
@@ -2457,35 +2474,58 @@
     // base's END as a slot focus — instead of letting exitScript drop it
     // at the block's front (the "left arrow inside superscript skips the
     // base character" report). Same hand-off shape as the fraction's
-    // numerator jump: the bare base is wrapped into the tex-less mrow slot
-    // convention, and its trailing box gives the parked caret a socket.
-    // Typing there extends the base (a|^{2} then x → ax^{2}); one more ←
-    // walks the base and a final ← releases before the block through the
-    // usual peel.
+    // numerator jump, and the same park the free caret's → uses when it
+    // steps ONTO a script block from the left (parkAtScriptBase below).
     function jumpToScriptBase() {
         var itemsB = topItems();
         var node = itemsB[itemsB.length - 1]; // a locked block is the last one
         if (typeof node === 'string') {
             try { node = JSON.parse(node); } catch (e) { return false; }
-            itemsB[itemsB.length - 1] = node;
         }
         if (!Array.isArray(node) || !Array.isArray(node[2])
             || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) {
             return false;
         }
         cancelScript(); // the slot focus takes over from the lock
+        return parkAtScriptBase(itemsB, itemsB.length - 1);
+    }
+
+    // The park both script arrow entries share: block bi must be an
+    // msup/msub/msubsup, then the base — a bare base wrapped into the
+    // tex-less mrow slot convention (invisible to canvas and TeX, the
+    // caret gains its socket) — becomes a slot focus parked at its END
+    // (a|^{2}). Typing there extends the base (a|^{2} then x →
+    // {ax}^{2}); → roundtrips into the script slot's start through
+    // fracSiblingSlot's base⇄script chain; ← walks the base and one
+    // final ← at its start peels before the block through the usual
+    // release. Reached from jumpToScriptBase (locked-script ← edge) and
+    // from moveCaret's free-caret → entry.
+    function parkAtScriptBase(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return false; }
+            items[bi] = node; // make the wrap reach the rebuild
+        }
+        if (!Array.isArray(node) || !Array.isArray(node[2])
+            || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) {
+            return false;
+        }
         if (!(Array.isArray(node[2][0]) && node[2][0][0] === 'mrow'
             && Array.isArray(node[2][0][2]))) {
             node[2][0] = ['mrow', {}, [node[2][0]]]; // wrap the bare base
         }
         var baseArr = node[2][0][2];
+        if (!slotTokenIndices(baseArr).length) { return false; } // a blank
+        // base has no edge to park behind: its box is reached by click/Tab
         ensureSlotBox(baseArr); // the parked caret's socket
         slotFocus.active = true;
-        slotFocus.top = itemsB.length - 1;
+        slotFocus.top = bi;
         slotFocus.path = [2, 0, 2];
         slotFocus.caretIdx = slotTokenIndices(baseArr).length; // the base's END
-        bookmarkSlot(itemsB, baseArr);
-        rebuildSlate(itemsB); // re-register the model
+        bookmarkSlot(items, baseArr);
+        rebuildSlate(items); // re-register the model
+        caret.gap = bi + 1; // the focus sits after the block as a unit, so a
+        // fill falls through insertChar's mid-slate gap check into the slot
         refreshCaret();
         return true;
     }

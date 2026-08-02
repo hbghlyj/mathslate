@@ -60,8 +60,18 @@ script — typing `x` grows the base: `{ax}^2`), and `→` from there hops
 back into the argument's start, the same roundtrip the fraction's
 numerator ↔ denominator navigation makes (`msubsup` chains all three:
 base ⇄ sub ⇄ sup); after walking the base, one more `←` releases the
-caret before the block. `→` over a script block stays a single
-whole-block step. The `\` placeholder is a little three-state box of its own:
+caret before the block. `→` stepping onto a script block from the left
+is the exact mirror: it parks **between the base and the script** — the
+base's end as a slot focus (`|a^2` `→` parks at `a|^2` — typing `x`
+grows the base: `{ax}^2`) — instead of skipping the structure whole, and
+the following `→` hops into the argument's start, so the two arrows
+visit the same positions in opposite order (`|a^2` ⇄ `a|^2` ⇄ `a^{|2}`
+⇄ `a^{2|}` ⇄ `a^2|`). Typed fills always land where the parked caret
+owns the cursor — mid-slate gap splices never steal a keystroke from a
+live slot, even when the block sits mid-row (`a^2bc`, walk to the front,
+`→`, `q` → `{aq}^2bc`). Only a *blank* base keeps the whole-block
+step — its box has no text edge to park behind (reach it by click/Tab).
+The `\` placeholder is a little three-state box of its own:
 
 1. **Activation** — typing `\` inserts a placeholder container showing a
    monospace `\` with the cursor locked inside it: arrow keys (and

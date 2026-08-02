@@ -2526,12 +2526,22 @@ await page.waitForFunction(() =>
 await page.keyboard.type('y');
 await texIs68('y{ax}^{23}');
 console.log('    through the base and released before the block, y landed before ✓');
-// a → press from the free caret before the block steps over it whole
+// a → press from the free caret before the block parks between base and
+// script — the mirror of ←'s entry (the "asymmetrical right arrow"
+// report, step 80 pins the full chain): the model is untouched, the base
+// owns the cursor at its end, typing grows it, and the next →
+// roundtrips into the script slot's start
 await page.keyboard.press('ArrowRight');
-await page.waitForTimeout(500);
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // the parked caret's socket
+await texIs68('y{ax}^{23}'); // the park itself does not touch the model
 await page.keyboard.type('q');
-await texIs68('y{ax}^{23}q');
-console.log('    → over the block stays a single whole-block step ✓');
+await texIs68('y{axq}^{23}');
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('w');
+await texIs68('y{axq}^{w23}');
+console.log('    → onto the block parks at the base end: q grew the base, → roundtripped into the script ✓');
 
 // msub gets the same entry
 await freshSlate68();
@@ -2675,6 +2685,132 @@ await texIs68('{}^{}12');
 await page.keyboard.type('x');
 await texIs68('{}^x12');
 console.log('    12 ←← ^ x → {}^x12 (blank base at the caret, nothing grabbed from afar) ✓');
+await page.click('#btn-clear-slate');
+
+console.log('80. → stepping onto a script block parks at its base end (the "symmetrical right arrow" report)');
+// the report: a^2, free caret immediately left of the a, → must step
+// INTO the block — between the base and the script — not skip the
+// structure whole (the exact mirror of step 77's ← entry)
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowRight'); // exit the superscript lock
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+// walk the free caret to the block's front: script END → script START →
+// base END park → base start → released before the block
+for (let i = 0; i < 5; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 }); // released: the socket dies with the exit
+await texIs68('a^2'); // the walk never touched the model
+await page.keyboard.press('ArrowRight'); // the report's failing step
+await page.waitForTimeout(500);
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active')
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // parked: one socket box, no lock glow
+await texIs68('a^2'); // the park itself does not touch the model
+await page.keyboard.type('x');
+await texIs68('{ax}^2'); // typing at the park extends the base — never xa^2
+console.log('    report flow: a^2 front, → parked between base and script; x grew the base → {ax}^2 ✓');
+// the chain continues symmetrically with the ← walk: → hops into the
+// script slot's START…
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('z');
+await texIs68('{ax}^{z2}');
+console.log('    → roundtripped into the argument start; z filled → {ax}^{z2} ✓');
+// …walks to its END, and one more → steps out after the block
+await page.keyboard.press('ArrowRight');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('w');
+await texIs68('{ax}^{z2}w');
+console.log('    through the argument and out right: w landed after the block ✓');
+
+// msub parks the same way
+await freshSlate68();
+await page.keyboard.type('b_3');
+await texIs68('b_3');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+for (let i = 0; i < 5; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForTimeout(400);
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('4');
+await texIs68('{b4}_3');
+console.log('    msub: b_3 front, → parked at b|_{3}; 4 grew the base → {b4}_3 ✓');
+
+// a BLANK base has no edge to park behind: → keeps the whole-block step
+// (the base's box is reached by click/Tab)
+await freshSlate68();
+await page.keyboard.type('12');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(400);
+await page.keyboard.type('^');
+await texIs68('{}^{}12');
+await page.keyboard.type('x');
+await texIs68('{}^x12');
+for (let i = 0; i < 3; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForTimeout(400);
+await texIs68('{}^x12'); // released before the blank-base block
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('y');
+await texIs68('{}^xy12'); // a plain block right of the script, not in the base
+console.log('    blank base: {}^x12 front, → stepped past whole; y landed beside ✓');
+
+// parked MID-ROW the fill still lands in the slot: the gap is not a
+// cursor while a slot focus lives
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowRight'); // out of the lock
+await page.waitForTimeout(300);
+await page.keyboard.type('bc');
+await texIs68('a^2bc');
+for (let i = 0; i < 7; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowRight'); // parks on the mid-row block's base
+await page.waitForTimeout(500);
+await page.keyboard.type('q');
+await texIs68('{aq}^2bc'); // bc keep their spot; the base grows in place
+console.log('    mid-row park: a^2bc front, → q → {aq}^2bc (fill stayed in the slot) ✓');
+// the same rule keeps continuation typing inside a planted mid-row
+// argument (no gap splice while the slot focus lives)
+await freshSlate68();
+await page.keyboard.type('123');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.type('_');
+await texIs68('1_{}23');
+await page.keyboard.type('x');
+await texIs68('1_x23');
+await page.keyboard.type('y');
+await texIs68('1_{xy}23');
+console.log('    123 ←← _ x y → 1_{xy}23 (continuation accumulates in the slot) ✓');
+
+// plain-block neighbours are unaffected: → steps back over the 2 to the end
+await freshSlate68();
+await page.keyboard.type('12');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('x');
+await texIs68('12x');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+console.log('    plain neighbour: 12 ← → x → 12x (no park, no boxes) ✓');
 await page.click('#btn-clear-slate');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
