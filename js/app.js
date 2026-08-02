@@ -2998,7 +2998,29 @@
         b: {env: 'bmatrix', delims: ['[', ']']},
         B: {env: 'Bmatrix', delims: ['{', '}']},
         v: {env: 'vmatrix', delims: ['\u2223', '\u2223']},
-        V: {env: 'Vmatrix', delims: ['\u2225', '\u2225']}
+        V: {env: 'Vmatrix', delims: ['\u2225', '\u2225']},
+        // Multi-line / structurally aligned EQUATION environments (the
+        // cases / aligned / array request). cases pieces a piecewise
+        // function together: only the LEFT brace is drawn (the right
+        // side stays bare) and every column is flush-left. aligned
+        // builds systems of equations: columns pair right/left (the
+        // relation column hugs its right neighbour) with no delimiters.
+        // array is the bare custom grid: its TeX carries the {c\u2026}
+        // column spec so the output compiles standalone.
+        cases: {env: 'cases', delims: ['{', null],
+            colAlign: function () { return 'left'; }},
+        aligned: {env: 'aligned', delims: null,
+            colAlign: function (cols) {
+                var a = [];
+                for (var i = 0; i < cols; i++) { a.push(i % 2 ? 'left' : 'right'); }
+                return a.join(' ');
+            }},
+        array: {env: 'array', delims: null,
+            colspec: function (cols) {
+                var spec = '';
+                for (var i = 0; i < cols; i++) { spec += 'c'; }
+                return spec;
+            }}
     };
 
     // The matrix tool is recognized by its wrapper's tex SHAPE: the
@@ -3072,12 +3094,18 @@
         // is the empty string — the environment owns them).
         if (wrap && MATRIX_WRAPS[wrap]) {
             var w = MATRIX_WRAPS[wrap];
-            root[1].tex = ['\\begin{' + w.env + '}', 0, '\\end{' + w.env + '}'];
-            root[2] = [['mrow', {}, [
-                ['mo', {tex: ['']}, w.delims[0]],
-                root[2][0],
-                ['mo', {tex: ['']}, w.delims[1]]
-            ]]];
+            root[1].tex = ['\\begin{' + w.env + '}'
+                + (w.colspec ? '{' + w.colspec(cols) + '}' : ''), 0, '\\end{' + w.env + '}'];
+            var kids = [];
+            if (w.delims && w.delims[0]) {
+                kids.push(['mo', {tex: ['']}, w.delims[0]]); // slate-only, texless
+            }
+            kids.push(root[2][0]);
+            if (w.delims && w.delims[1]) {
+                kids.push(['mo', {tex: ['']}, w.delims[1]]);
+            }
+            root[2] = [['mrow', {}, kids]];
+            if (w.colAlign) { table[1].columnalign = w.colAlign(cols); }
         }
         return JSON.stringify(root);
     }

@@ -223,11 +223,19 @@ is a one-click token (`a` + button + `b` → `a \gets b`), and every one
 compiles from the TeX tab too.
 
 **Matrix tool, any size.** The toolbox's matrix button asks for its
-dimensions first — any **1×1 to 10×10** grid — and for its **brackets**:
-bare, `( )`, `[ ]`, `{ }`, `| |` or `‖ ‖`. The slate renders the chosen
-delimiters with the matrix, while the TeX output stays canonical amsmath:
-bare grids keep the legacy `\matrix{…}` form and wrapped ones emit the
-environment (`\begin{pmatrix}…\end{pmatrix}` — the `\bmatrix`-style
+dimensions first — any **1×1 to 10×10** grid — and for its **brackets**
+or environment: bare, `( )`, `[ ]`, `{ }`, `| |`, `‖ ‖`, or the
+multi-line environments **`cases`**, **`aligned`** and **`array`**.
+The slate renders the chosen delimiters with the matrix — `cases`
+shows just the left `{` with every column flush-left (piecewise
+functions), `aligned` pairs right/left equation columns with no
+delimiters (systems of equations), `array` stays bare and centered
+with the `{c…}` column spec in its TeX — while the TeX output stays
+canonical amsmath:
+bare grids keep the legacy `\matrix{…}` form and the others emit
+environments (`\begin{pmatrix}…\end{pmatrix}`,
+`\begin{cases}…\end{cases}`, `\begin{aligned}…\end{aligned}`,
+`\begin{array}{cc}…\end{array}` — the `\bmatrix`-style
 plain macros exist in neither MathJax 4 nor modern amsmath). The insert
 then drops the cursor into the first cell, so `Tab` fills the matrix
 cell by cell, row by row (`Shift+Tab` steps back). Size and brackets are

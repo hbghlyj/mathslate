@@ -189,7 +189,8 @@
     <div id="matrix-dialog" class="matrix-dialog" role="dialog" aria-modal="true"
          aria-labelledby="matrix-dialog-title">
         <h3 id="matrix-dialog-title" class="matrix-dialog-title">Insert a matrix</h3>
-        <p class="matrix-dialog-hint">Pick the grid size (1&ndash;10 each way) and its brackets.
+        <p class="matrix-dialog-hint">Pick the grid size (1&ndash;10 each way) and its brackets
+           &mdash; or a cases / aligned / array environment.
            Both are remembered &mdash; the next matrix, and drags of the tool, reuse them.</p>
         <div class="matrix-dialog-fields">
             <label for="matrix-rows">Rows</label>
@@ -199,7 +200,7 @@
             <input id="matrix-cols" type="number" min="1" max="10" step="1" value="2">
         </div>
         <div class="matrix-dialog-fields matrix-dialog-wrap">
-            <label for="matrix-wrap">Brackets</label>
+            <label for="matrix-wrap">Brackets / environment</label>
             <select id="matrix-wrap">
                 <option value="" selected>None &mdash; \matrix</option>
                 <option value="p">( ) &mdash; pmatrix</option>
@@ -207,6 +208,9 @@
                 <option value="B">{ } &mdash; Bmatrix</option>
                 <option value="v">| | &mdash; vmatrix</option>
                 <option value="V">&#x2016; &#x2016; &mdash; Vmatrix</option>
+                <option value="cases">{ &mdash; cases (piecewise)</option>
+                <option value="aligned">aligned &mdash; equation system</option>
+                <option value="array">array &mdash; custom columns</option>
             </select>
         </div>
         <div class="matrix-dialog-actions">

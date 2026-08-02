@@ -2995,6 +2995,107 @@ await texIs68('\\frac{1}{5X}');
 console.log('    toolbar fraction: 1/5 exit, ← entered the denominator; X → \\frac{1}{5X} ✓');
 await page.click('#btn-clear-slate');
 
+console.log('83. matrix tool environments: cases, aligned, array');
+// the request: multi-line / structurally aligned math directly from the
+// dialog — piecewise cases, aligned equation systems, custom arrays.
+// cases: the lone left brace shows on the slate (no right one), every
+// column flush-left
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(2, 2);
+await setWrap72('cases');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{cases}&\\\\&\\end{cases}');
+await page.keyboard.type('a');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('b');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('c');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('d');
+await texIs68('\\begin{cases}a&b\\\\c&d\\end{cases}');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c7B').length === 1
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c7D').length === 0
+        && [...document.querySelectorAll('#mathslate-editor #canvas mjx-mtd')]
+            .every((el) => getComputedStyle(el).textAlign === 'left'),
+    null, { timeout: 15000 });
+console.log('    cases 2×2 → \\begin{cases}a&b\\\\c&d\\end{cases}: lone { on the slate, columns flush-left ✓');
+// item 34's ← entry descends the environment wrapper too
+await page.keyboard.press('ArrowRight'); // out past the last cell
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('X');
+await texIs68('\\begin{cases}a&b\\\\c&dX\\end{cases}');
+console.log('    ← peeled into the cases last cell; X → \\begin{cases}a&b\\\\c&dX\\end{cases} ✓');
+
+// aligned: right/left equation-column pairs, nothing drawn around the grid
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(2, 2);
+await setWrap72('aligned');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{aligned}&\\\\&\\end{aligned}');
+await page.keyboard.type('a');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('=b');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('c');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('=d');
+await texIs68('\\begin{aligned}a&=b\\\\c&=d\\end{aligned}');
+await page.waitForFunction(() => {
+    const aligns = [...document.querySelectorAll('#mathslate-editor #canvas mjx-mtd')]
+        .map((el) => getComputedStyle(el).textAlign);
+    return aligns.join(',') === 'right,left,right,left'
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c7B').length === 0;
+}, null, { timeout: 15000 });
+console.log('    aligned 2×2 → \\begin{aligned}a&=b\\\\c&=d\\end{aligned}: right/left column pairs ✓');
+
+// array: bare custom grid, its TeX carries the {c…} column spec
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(2, 3);
+await setWrap72('array');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{array}{ccc}&&\\\\&&\\end{array}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('2');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('3');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('4');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('5');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('6');
+await texIs68('\\begin{array}{ccc}1&2&3\\\\4&5&6\\end{array}');
+await page.waitForFunction(() =>
+    [...document.querySelectorAll('#mathslate-editor #canvas mjx-mtd')]
+        .every((el) => getComputedStyle(el).textAlign === 'center'),
+    null, { timeout: 15000 });
+console.log('    array 2×3 → \\begin{array}{ccc}…\\end{array}: centered columns, colspec in the TeX ✓');
+
+// the dialog keeps remembering (env + 2×3 survive); reset it for the
+// matrix steps that run with the plain legacy default elsewhere
+await freshSlate68();
+await clickMatrixTool71();
+const remembered83 = await wrapVal72();
+if (remembered83 !== 'array') { throw new Error('the dialog forgot the array choice: ' + remembered83); }
+await page.$eval('#matrix-rows', (el) => { el.value = '2'; });
+await page.$eval('#matrix-cols', (el) => { el.value = '2'; });
+await setWrap72('');
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+console.log('    env choice remembered (array back in the dialog), reset to the legacy bare default ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

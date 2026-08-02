@@ -254,7 +254,16 @@ empty denominators work (`\frac{a}{}` `←` `X` → `\frac{a}{X}`), nested
 structures stay inert whole-block steps (`\frac{\sqrt{2}}{b}` is
 byte-untouched), and toolbar fractions gain the same `←` denominator
 entry (`1/5`, exit the lock, `←`, `X` → `\frac{1}{5X}`).
-82 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the multi-line environments: the matrix dialog's
+bracket select now also offers `cases`, `aligned` and `array` —
+`\begin{cases}a&b\\c&d\end{cases}` fills Tab-wise with the lone left
+brace on the slate and flush-left cells, the `←` entry peels into its
+last cell (`X` → `…&dX\end{cases}`); `\begin{aligned}a&=b\\c&=d
+\end{aligned}` pairs right/left equation columns with no delimiters;
+and `\begin{array}{ccc}…\end{array}` stays centered with the column
+spec in its TeX; the dialog remembers the environment choice too (reset
+to the legacy bare default at the end of the step).
+83 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium
