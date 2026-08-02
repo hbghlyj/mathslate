@@ -1472,6 +1472,34 @@
         return null; // a foreign wrapper owns the argument: not a slot
     }
 
+
+    // Where ← lands when it steps ONTO a fraction block from the right:
+    // the DENOMINATOR's live slot as {path, arr} — the fraction analog of
+    // the script and matrix entries — or null when block bi is not a
+    // top-level mfrac. A bare denominator (a plain token from a hand-built
+    // model, or an element leaf from a normalized TeX-tab compile) is
+    // wrapped into the tex-less mrow slot convention on the fly — the
+    // same wrap fracSiblingSlot gives bare siblings during the walk, so
+    // the climb to the numerator, the release at its start and the →
+    // roundtrip all come from the existing machinery. Typed-lock
+    // fractions never reach here (their locks own the caret); toolbar
+    // ones already carry the convention, so the wrap is a no-op for them.
+    function fracSlotEntry(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return null; }
+            items[bi] = node; // make the wrap reach the rebuild
+        }
+        if (!Array.isArray(node) || node[0] !== 'mfrac' || !Array.isArray(node[2])
+            || node[2].length !== 2) { return null; }
+        var den = node[2][1];
+        if (!(Array.isArray(den) && den[0] === 'mrow' && Array.isArray(den[2])
+            && !(den[1] && den[1].tex))) {
+            node[2][1] = ['mrow', {}, [den]]; // wrap the bare denominator
+        }
+        return { path: [2, 1, 2], arr: node[2][1][2] };
+    }
+
     // Where ← lands when it steps ONTO a matrix block from the right: the
     // BOTTOM-RIGHT cell's live slot as {path, arr} — the caret parked at
     // the cell's END — or null when block bi holds no mtable (the
@@ -1578,8 +1606,9 @@
     // peels INTO its script slot — parked at the slot's END — instead of
     // skipping the whole block to before its base (the "a^2, →, then ←
     // jumps to the left of a" report); stepping onto a MATRIX peels into
-    // its bottom-right cell the same way (the "← skips the whole matrix"
-    // report). The slot-focus machinery takes
+    // its bottom-right cell, and onto a FRACTION into its denominator,
+    // the same way (the "← skips the whole matrix" and the TeX-tab
+    // fraction navigation reports). The slot-focus machinery takes
     // over from there: more ← walks the slot's tokens, typing lands
     // inside, at the slot's start a further ← parks between base and
     // script, and a final ← releases the caret to before the block
@@ -1591,7 +1620,8 @@
             // …or a MATRIX enters its bottom-right cell (parked at the
             // cell's end), never skipping the grid whole.
             var entry = scriptSlotEntry(entryItems, caret.gap - 1)
-                || matrixSlotEntry(entryItems, caret.gap - 1);
+                || matrixSlotEntry(entryItems, caret.gap - 1)
+                || fracSlotEntry(entryItems, caret.gap - 1);
             if (entry) {
                 slotFocus.active = true;
                 slotFocus.top = caret.gap - 1;
@@ -3137,6 +3167,60 @@
         });
     }
 
+    // TeX-tool compiles of a LONE fraction arrive as one mrow whose tex
+    // attr is the user's whole input STRING (no slot references): the
+    // template shadows the compiled children in the serializer, so the
+    // fraction stays an inert atom — no slot can be focused, walked, or
+    // hop-climbed (the "fraction navigation fails for TeX-tool \\frac"
+    // report). Such a wrapper is promoted to a first-class tool fraction
+    // at insert time: the mfrac becomes the block outright, carrying the
+    // config's own \\frac{0}{1}-shape TeX template, its arguments wrapped
+    // in the tex-less mrow slot convention — emitting the byte-identical
+    // TeX — so arrow entries, sibling climbs, Tab boxes and fills treat
+    // it exactly like a toolbar fraction. Guards: the wrapper's tex must
+    // be ONE \\frac/\\dfrac-shaped string, its ONLY compiled child the
+    // mfrac, and both arguments LEAVES (a bare token, an element holding
+    // a literal string, or an mrow of such) — deeper structures lack
+    // templates deeper down, so normalizing them would corrupt the TeX
+    // output and they stay inert whole-block steps instead.
+    function normalizeCompiledFrac(json) {
+        if (typeof json !== 'string') { return null; }
+        var node = null;
+        try { node = JSON.parse(json); } catch (e) { return null; }
+        if (!Array.isArray(node) || node[0] !== 'mrow' || !node[1]
+            || !Array.isArray(node[1].tex) || node[1].tex.length !== 1
+            || typeof node[1].tex[0] !== 'string'
+            || !/^\\d?frac/.test(node[1].tex[0])
+            || !Array.isArray(node[2]) || node[2].length !== 1) { return null; }
+        var frac = node[2][0];
+        if (!Array.isArray(frac) || frac[0] !== 'mfrac' || !Array.isArray(frac[2])
+            || frac[2].length !== 2) { return null; }
+        function leafish(n) {
+            if (typeof n === 'string') { return true; } // a bare token or the '[]' blank
+            if (Array.isArray(n)) {
+                if (typeof n[2] === 'string') { return true; } // an element leaf
+                if (n[0] === 'mrow' && !(n[1] && n[1].tex) && Array.isArray(n[2])) {
+                    return n[2].every(leafish); // an mrow of leaves
+                }
+            }
+            return false;
+        }
+        if (!leafish(frac[2][0]) || !leafish(frac[2][1])) { return null; }
+        var name = node[1].tex[0].slice(0, 6) === '\\dfrac' ? '\\dfrac' : '\\frac';
+        var args = frac[2].map(function (child) {
+            return (Array.isArray(child) && child[0] === 'mrow'
+                && !(child[1] && child[1].tex) && Array.isArray(child[2]))
+                ? child // already the slot convention
+                : ['mrow', {}, [child]];
+        });
+        var attrs = {};
+        for (var k in (frac[1] || {})) {
+            if (frac[1].hasOwnProperty(k) && k !== 'tex') { attrs[k] = frac[1][k]; }
+        }
+        attrs.tex = [name + '{', 0, '}{', 1, '}'];
+        return JSON.stringify(['mfrac', attrs, args]);
+    }
+
     function wireAddMathCounter() {
         var mje = editor && editor.mje;
         if (!mje || mje.addMath.__counted) { return; }
@@ -3165,7 +3249,7 @@
                 }
                 return; // NOT routed through the core: it belongs in the slot
             }
-            var result = origAdd.apply(this, arguments);
+            var result = origAdd.call(this, normalizeCompiledFrac(json) || json);
             armBoxAfterInsert(json); // focus the first empty placeholder
             return result;
         };

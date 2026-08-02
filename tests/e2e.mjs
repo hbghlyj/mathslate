@@ -2887,6 +2887,114 @@ await texIs68('\\matrix{1&1\\\\1&2}');     // the blank consumed, 2 in the cell
 console.log('    empty bottom-right cell: ← parked in its box, 2 filled → \\matrix{1&1\\\\1&2} ✓');
 await page.click('#btn-clear-slate');
 
+console.log('82. TeX-tab fractions are real fractions: ← enters the denominator, climbs, releases');
+// the report: \\frac{a}{b} typed into the TeX tab compiles to an inert
+// mrow atom whose tex string shadows the children — no slot could be
+// focused, so ← skipped the whole structure. The lone-\\frac wrapper is
+// now promoted to a first-class fraction at insert time (byte-identical
+// TeX), and plain mfrac blocks got the denominator ← entry.
+async function compileTeX82(src) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((v) => {
+        const input = document.querySelector('#mathslate-editor input[type="text"]');
+        input.value = v;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, src);
+    await page.waitForTimeout(900);
+}
+await freshSlate68();
+await compileTeX82('\\frac{a}{b}');
+await texIs68('\\frac{a}{b}');
+await page.keyboard.press('ArrowLeft'); // the report's failing step
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // entered the denominator: one socket
+await texIs68('\\frac{a}{b}'); // the entry touches neither model nor TeX
+await page.keyboard.type('X');
+await texIs68('\\frac{a}{bX}'); // the fill lands at the denominator's END
+console.log('    report flow: TeX-tab \\frac{a}{b}, ← entered the denominator; X → \\frac{a}{bX} ✓');
+// walk to the denominator's start; one more ← climbs to the numerator's END
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.type('W');
+await texIs68('\\frac{aW}{bX}');
+console.log('    ← at the denominator start climbed to the numerator end; W → \\frac{aW}{bX} ✓');
+// → at the numerator's end roundtrips down to the denominator's START
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('Q');
+await texIs68('\\frac{aW}{QbX}');
+console.log('    → roundtrip dropped to the denominator start; Q → \\frac{aW}{QbX} ✓');
+// through the numerator and one final ← releases before the fraction
+for (let i = 0; i < 5; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('V');
+await texIs68('V\\frac{aW}{QbX}');
+console.log('    through the numerator and released before the fraction; V landed before ✓');
+
+// the variants: \\dfrac keeps its name; number leaves work; an empty
+// denominator's box fills; a nested structure stays an inert whole-block
+// step (normalizing it would corrupt its TeX)
+await freshSlate68();
+await compileTeX82('\\dfrac{ab}{cd}');
+await texIs68('\\dfrac{ab}{cd}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('X');
+await texIs68('\\dfrac{ab}{cdX}');
+console.log('    \\dfrac{ab}{cd}: ← entered, X → \\dfrac{ab}{cdX} ✓');
+await freshSlate68();
+await compileTeX82('\\frac{12}{34}');
+await texIs68('\\frac{12}{34}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.keyboard.type('X');
+await texIs68('\\frac{12}{34X}');
+console.log('    \\frac{12}{34}: ← entered, X → \\frac{12}{34X} ✓');
+await freshSlate68();
+await compileTeX82('\\frac{a}{}');
+await texIs68('\\frac{a}{}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.keyboard.type('X');
+await texIs68('\\frac{a}{X}');
+console.log('    empty denominator: ← parked in its box, X filled → \\frac{a}{X} ✓');
+await freshSlate68();
+await compileTeX82('\\frac{\\sqrt{2}}{b}');
+await texIs68('\\frac{\\sqrt{2}}{b}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 }); // no entry: the whole-block step stands
+await page.keyboard.type('X');
+await texIs68('X\\frac{\\sqrt{2}}{b}'); // the inert compile's TeX is untouched
+console.log('    \\frac{\\sqrt{2}}{b}: nested structure stays inert; X landed before ✓');
+
+// toolbar fractions gain the same denominator entry
+await freshSlate68();
+await page.keyboard.type('1/5');
+await texIs68('\\frac{1}{5}');
+await page.keyboard.press('ArrowRight'); // exit the / lock
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft'); // now peels into the denominator
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('X');
+await texIs68('\\frac{1}{5X}');
+console.log('    toolbar fraction: 1/5 exit, ← entered the denominator; X → \\frac{1}{5X} ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

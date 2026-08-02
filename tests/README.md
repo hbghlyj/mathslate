@@ -241,7 +241,20 @@ through every cell until the caret releases before the matrix
 (`y` → `y\matrix{1&1\\1&12}x`); an EMPTY bottom-right cell parks in its box
 like an empty script argument and the fill consumes the blank
 (`\matrix{1&1\\1&}` `←` `2` → `\matrix{1&1\\1&2}`).
-81 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the TeX-tab-fraction navigation report: a lone
+`\frac{a}{b}` compiled by the direct-TeX tab used to stay an inert atom
+(its whole-input TeX string shadowed the children, nothing could be
+focused), and is now promoted to a first-class fraction at insert time
+— `←` peels into the denominator's END (`X` → `\frac{a}{bX}`), the
+item-22 climb and roundtrip apply verbatim (`←` at the denominator start
+→ numerator end, `W` → `\frac{aW}{bX}`; `→` back down, `Q` →
+`\frac{aW}{QbX}`), and walking out left releases before the block
+(`V` → `V\frac{aW}{QbX}`); `\dfrac` keeps its name, number leaves and
+empty denominators work (`\frac{a}{}` `←` `X` → `\frac{a}{X}`), nested
+structures stay inert whole-block steps (`\frac{\sqrt{2}}{b}` is
+byte-untouched), and toolbar fractions gain the same `←` denominator
+entry (`1/5`, exit the lock, `←`, `X` → `\frac{1}{5X}`).
+82 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

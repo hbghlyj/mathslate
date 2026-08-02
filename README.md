@@ -183,7 +183,18 @@ then walks the numerator left token by token, and one final `←` past
 its start exits the fraction to the left — while `→` past the
 denominator's end exits to the right. This holds both while a typed `/`
 block is still locked and after clicking into a box of a finished
-fraction. Exiting a focused slot — by arrow or by `Esc` — also sheds
+fraction — and, exactly like script blocks and matrices, `←` stepping
+**onto** a finished fraction from the slate peels into the denominator
+(parked at its end; fills land there). Fractions compiled from typed
+TeX participate too: a lone `\frac{…}{…}` (or `\dfrac`) typed into the
+TeX tab used to stay an inert atom — its whole-input TeX own string
+shadowed the compiled children, so no slot could ever be focused — and
+is now promoted to a first-class fraction on insertion, emitting the
+byte-identical TeX (`\frac{a}{b}` compiles, `←` enters the denominator,
+`X` → `\frac{a}{bX}`, and the full numerator climb applies). Compiles
+whose arguments nest real structure (`\frac{\sqrt{2}}{b}`) stay inert
+whole-block steps: they have no templates deeper down, so editing them
+could never re-emit correct TeX. Exiting a focused slot — by arrow or by `Esc` — also sheds
 the slot's placeholder socket: no stray empty box is left on the slate
 or the preview canvas once the caret has moved on, and a `Space`/`Enter`
 that closes a TeX-command box can never be mistaken for a script-block
