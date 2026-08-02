@@ -232,7 +232,16 @@ slot — the gap is not a cursor while a slot focus lives —
 (`a^2bc` front `→` `q` → `{aq}^2bc`, and continuation typing accumulates:
 `123` `←` `←` `_` `x` `y` → `1_{xy}23`); plain neighbours still get a
 plain step (`12` `←` `→` `x` → `12x`).
-80 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the matrix-arrow-skip report: with the caret immediately
+right of a filled 2×2 `\matrix{1&1\\1&1}`, `←` steps INTO the bottom-right
+cell — model untouched, one socket — and the fill lands at the cell's end
+(`2` → `\matrix{1&1\\1&12}`); stepping back out right and re-entering over a
+plain neighbour works the same, and the row-major walk continues backwards
+through every cell until the caret releases before the matrix
+(`y` → `y\matrix{1&1\\1&12}x`); an EMPTY bottom-right cell parks in its box
+like an empty script argument and the fill consumes the blank
+(`\matrix{1&1\\1&}` `←` `2` → `\matrix{1&1\\1&2}`).
+81 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

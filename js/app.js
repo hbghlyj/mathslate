@@ -1472,11 +1472,62 @@
         return null; // a foreign wrapper owns the argument: not a slot
     }
 
+    // Where ← lands when it steps ONTO a matrix block from the right: the
+    // BOTTOM-RIGHT cell's live slot as {path, arr} — the caret parked at
+    // the cell's END — or null when block bi holds no mtable (the
+    // "\matrix{…} then ← skips the whole block" report). The matrix tool
+    // nests its mtable inside an mrow that OWNS the \matrix{…} TeX
+    // template, so — unlike scriptSlotEntry's whole-TeX wrappers — the
+    // wrapper chain IS descended: the template's single slot is the whole
+    // table while the cells stay caret-addressable through their own
+    // cell templates, the same shape the click-fill walk focuses. Only
+    // mrows are descended (bare-group wrappers and the tool's own", so a
+    // mrows are descended (bare-group wrappers and the tool's own), so
+    // a fraction whose numerator happens to hold a matrix keeps its
+    // whole-block step; the descent is document order, so the OUTERMOST
+    // mrow chain via mtrCellSlot, exactly like fracSiblingSlot's
+    // row-major hops — the walk machinery takes over from there, so more
+    // ← walks the grid backwards and → roundtrips.
+    function matrixSlotEntry(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return null; }
+            items[bi] = node; // make the walk reach the rebuild
+        }
+        var found = null;
+        (function findMtableWithPath(n, p) {
+            if (found || !Array.isArray(n) || !Array.isArray(n[2]) || !n[2].length) { return; }
+            if (n[0] === 'mtable') { found = {node: n, path: p}; return; }
+            if (n[0] !== 'mrow') { return; } // only mrow wrappers own matrix templates
+            for (var i = 0; i < n[2].length && !found; i++) {
+                findMtableWithPath(n[2][i], p.concat([2, i]));
+            }
+        })(node, []);
+        if (!found) { return null; }
+        var table = found.node;
+        var ri = table[2].length - 1;
+        if (ri < 0) { return null; }
+        var row = table[2][ri];
+        if (!Array.isArray(row) || (row[0] !== 'mtr' && row[0] !== 'mlabeledtr')
+            || !Array.isArray(row[2]) || !row[2].length) { return null; }
+        var ci = row[2].length - 1;
+        if (!Array.isArray(row[2][ci])) { return null; }
+        return mtrCellSlot(row[2][ci], found.path.concat([2, ri, 2, ci]));
+    }
+
     // < and > (the UI buttons and ←/→): step the fake caret one position.
     // A real selection collapses to the end first. Inside a locked script
     // block the caret steps between the block's tokens; only a step PAST an
     // edge lets the cursor out — the block never loses it otherwise.
     function moveCaret(dir) {
+        // Snapshot BEFORE scrubSelection eats the marker: while an armed
+        // EMPTY BOX lives (an insert's first-placeholder arm, a Tab
+        // cycle's) the cursor conceptually sits INSIDE that box's
+        // structure — an arrow steps OUT of it with the classic whole-step,
+        // never dives deep into the block's far side (a fresh matrix's
+        // armed first cell + ← releases BEFORE the grid, never jumps to
+        // its bottom-right cell).
+        var armedBox = hasSlateSelection() && selectedNodeIsBlank();
         scrubSelection();
         if (script.awaiting && !script.locked) {
             // The fresh script box is armed (or still arming) but never
@@ -1526,16 +1577,21 @@
     // ← stepping ONTO a script block (msup/msub/msubsup) from the right
     // peels INTO its script slot — parked at the slot's END — instead of
     // skipping the whole block to before its base (the "a^2, →, then ←
-    // jumps to the left of a" report). The slot-focus machinery takes
+    // jumps to the left of a" report); stepping onto a MATRIX peels into
+    // its bottom-right cell the same way (the "← skips the whole matrix"
+    // report). The slot-focus machinery takes
     // over from there: more ← walks the slot's tokens, typing lands
     // inside, at the slot's start a further ← parks between base and
     // script, and a final ← releases the caret to before the block
     // through the usual peel. → over a script block is the mirror: it
     // parks between the base and the script (the base IS the block's
     // first run of content) instead of skipping the structure whole.
-    if (dir < 0 && caret.gap > 0 && caret.gap <= modelBlocks) {
+        if (dir < 0 && !armedBox && caret.gap > 0 && caret.gap <= modelBlocks) {
             var entryItems = topItems();
-            var entry = scriptSlotEntry(entryItems, caret.gap - 1);
+            // …or a MATRIX enters its bottom-right cell (parked at the
+            // cell's end), never skipping the grid whole.
+            var entry = scriptSlotEntry(entryItems, caret.gap - 1)
+                || matrixSlotEntry(entryItems, caret.gap - 1);
             if (entry) {
                 slotFocus.active = true;
                 slotFocus.top = caret.gap - 1;
@@ -1556,7 +1612,7 @@
         // back out through the base, and the next → roundtrips into the
         // script slot's start through fracSiblingSlot's base⇄script
         // chain — the same positions the ← walk visits, in reverse.
-        if (dir > 0 && caret.gap < modelBlocks) {
+        if (dir > 0 && !armedBox && caret.gap < modelBlocks) {
             var itemsR = topItems();
             if (parkAtScriptBase(itemsR, caret.gap)) { return; }
         }

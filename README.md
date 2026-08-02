@@ -231,7 +231,13 @@ stepping past the grid's own edges — first cell `←`, last cell `→` —
 releases the caret to the slate beside the whole matrix (it never
 strands a placeholder inside the row structure: an early variant of
 that peel parked the caret's socket in the table's row list, which
-MathJax faithfully rendered as a phantom extra row). Multi-token cells
+MathJax faithfully rendered as a phantom extra row). `←` stepping back
+onto the matrix from the slate peels **into** its bottom-right cell —
+parked at the cell's end, the model untouched, one socket as the
+caret's home (an empty cell parks in its box and the fill lands,
+consuming the blank) — instead of skipping the grid whole to before
+its left edge, the same entry script blocks make; the row-major walk
+then continues backwards cell by cell from there. Multi-token cells
 (`19`, `a/b`) serialize in full: each cell wraps its content in an
 invisible `mrow`, so the separators stay the `mtd`s' own `&`/`\\`
 overrides while cell content keeps reading out token by token.

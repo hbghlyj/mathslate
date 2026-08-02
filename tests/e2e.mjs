@@ -2813,6 +2813,80 @@ await page.waitForFunction(() =>
 console.log('    plain neighbour: 12 ← → x → 12x (no park, no boxes) ✓');
 await page.click('#btn-clear-slate');
 
+console.log('81. <- stepping onto a matrix block enters its bottom-right cell (the "matrix arrow skip" report)');
+// the report: \\matrix{1&1\\\\1&1} with the caret immediately right of
+// the matrix block — ← must step INTO the bottom-right cell, not skip
+// the grid whole
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 2
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 3
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 4
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&1\\\\1&1}');
+await page.keyboard.press('ArrowRight'); // past the last cell: release after the matrix
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft'); // the report's failing step
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // one socket: the caret's home inside cell 4
+await texIs68('\\matrix{1&1\\\\1&1}'); // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{1&1\\\\1&12}'); // the fill lands at the cell's END
+console.log('    report flow: filled 2×2, right-of-matrix ← entered cell 4; 2 filled → \\matrix{1&1\\\\1&12} ✓');
+// step back out right and re-enter over a plain neighbour
+await page.keyboard.press('ArrowRight');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('x');
+await texIs68('\\matrix{1&1\\\\1&12}x');
+await page.keyboard.press('ArrowLeft'); // a plain step over the x
+await page.keyboard.press('ArrowLeft'); // onto the matrix: re-entry
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+// …and the row-major walk continues backwards cell by cell until the
+// caret releases before the matrix
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('y');
+await texIs68('y\\matrix{1&1\\\\1&12}x');
+console.log('    the walk continues backwards through every cell; y landed before the matrix ✓');
+
+// an EMPTY bottom-right cell behaves like an empty script argument: the
+// entry parks in its box and the fill lands, consuming the blank
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&1\\\\1&}');
+await page.keyboard.press('ArrowRight');   // into the empty cell…
+await page.keyboard.press('ArrowRight');   // …and past the grid's edge
+await page.waitForTimeout(500);
+await page.keyboard.press('ArrowLeft');    // back onto the matrix
+await page.waitForTimeout(500);
+await texIs68('\\matrix{1&1\\\\1&}');      // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{1&1\\\\1&2}');     // the blank consumed, 2 in the cell
+console.log('    empty bottom-right cell: ← parked in its box, 2 filled → \\matrix{1&1\\\\1&2} ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {
