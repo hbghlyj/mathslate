@@ -34,6 +34,18 @@ everything right of it keeps its spot — `12`, `←`, `^` gives `1^{}2`;
 parked before the first block, the structure inserts at the caret with a
 blank base (`12`, `←`, `←`, `^`, `x` → `{}^x12`). Only at the end of the
 slate does the classic last-block wrap apply.
+Toolbar **clicks**, canvas drops from the toolbox, and the TeX tab's
+compiled input honor the same free caret: the tool is spliced in at the
+caret's gap, the caret stepping past the inserted block — `13`, `←`,
+click the toolbar `2` gives `123` (it used to ignore the caret and
+append: `132`). Structure tools splice the same way and their first
+placeholder still arms as the cursor (`13`, `←`, fraction click →
+`1\frac{}{}3`, then `2` → `1\frac{2}{}3`). Every other cursor owner
+keeps its own path: a real selection or an armed fill-box still takes
+the click at the selection (`^`, click `2` → `{}^2`), script locks,
+slot focuses, the macro box and the matrix dialog are untouched, and
+with the caret at the very end a click still appends (`12`, click `2` →
+`122`).
 Clearing the slate also drops any armed/selected box synchronously, so
 typing immediately after **Clear slate** cannot fall into a ghost
 placeholder and vanish.

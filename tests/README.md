@@ -272,7 +272,15 @@ forwards through every cell and releases after the grid (`x` →
 `\\matrix{21&1\\\\1&1}x`); an EMPTY top-left cell parks in its box,
 the fill consuming the blank (`\\matrix{&1\\\\1&1}` `→` `2` →
 `\\matrix{2&1\\\\1&1}`).
-84 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+Step 85 pins the report's toolbar-click caret splice: `13`, `←` (caret
+between the 1 and the 3), click the toolbar `2` → `123` (never `132`),
+with the caret stepping past the inserted block (`+` → `12+3`, `→` `x`
+→ `12+3x`); a structure tool splices the same way and still arms its
+first placeholder (`13`, `←`, fraction click → `1\\frac{}{}3`, `2` →
+`1\\frac{2}{}3`); and the other cursor owners keep their old paths —
+an armed box takes the click at the selection (`^`, click `2` →
+`{}^2`), a caret at the end still appends (`12`, click `2` → `122`).
+85 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

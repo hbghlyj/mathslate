@@ -3161,6 +3161,75 @@ await texIs68('\\matrix{2&1\\\\1&1}');     // the blank consumed, 2 in the cell
 console.log('    empty top-left cell: → parked in its box, 2 filled → \\matrix{2&1\\\\1&1} ✓');
 await page.click('#btn-clear-slate');
 
+console.log('85. toolbar clicks insert at the free caret mid-slate (the "toolbar insert bypasses cursor" report)');
+// the report: type 13, ← (caret between the 1 and the 3), click the
+// toolbar 2 — the click APPENDED at the end (132) instead of inserting
+// at the caret (123). Toolbar clicks (and canvas drops / TeX-tab
+// compiles) now take the same mid-slate gap splice typed characters
+// take, and the caret steps past the inserted block
+async function clickToolByTitle85(tabIdx, title) {
+    await page.evaluate((i) => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[i].querySelector('.yui3-tab-label, a').click();
+    }, tabIdx);
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        const s = spans.find((x) => x.title === t);
+        s.closest('.yui3-dd-draggable').click();
+    }, title);
+    await page.waitForTimeout(500);
+}
+async function clickToolByIndex85(tabIdx, toolIdx) {
+    await page.evaluate((i) => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[i].querySelector('.yui3-tab-label, a').click();
+    }, tabIdx);
+    await page.waitForTimeout(400);
+    await page.evaluate((idx) => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected .yui3-dd-draggable')[idx].click();
+    }, toolIdx);
+    await page.waitForTimeout(500);
+}
+await freshSlate68();
+await page.keyboard.type('13');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(300);
+await clickToolByTitle85(3, '2'); // Latin tab, the "2" button
+await texIs68('123'); // the report's expectation: not 132
+await page.keyboard.type('+');
+await texIs68('12+3'); // the caret stepped past the inserted 2
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(200);
+await page.keyboard.type('x');
+await texIs68('12+3x'); // → walked over the 3 to the end
+console.log('    report flow: 13 ← click-2 → 123; + → 12+3; → x → 12+3x ✓');
+
+// a STRUCTURE tool splices at the caret the same way — and its first
+// placeholder still arms as the cursor
+await freshSlate68();
+await page.keyboard.type('13');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(300);
+await clickToolByIndex85(5, 0); // roots&brackets tab, the fraction tool
+await texIs68('1\\frac{}{}3');
+await page.keyboard.type('2');
+await texIs68('1\\frac{2}{}3');
+console.log('    fraction tool: 13 ← click → 1\\frac{}{}3; 2 → 1\\frac{2}{}3 (numerator armed) ✓');
+
+// the other cursor owners keep their paths: an armed box still takes
+// the click (the core's insert-at-selection), and a caret at the end
+// still appends
+await freshSlate68();
+await page.keyboard.type('^');
+await page.waitForTimeout(300);
+await clickToolByTitle85(3, '2');
+await texIs68('{}^2');
+await freshSlate68();
+await page.keyboard.type('12');
+await clickToolByTitle85(3, '2');
+await texIs68('122');
+console.log('    armed box: ^ click-2 → {}^2; caret at end: 12 click-2 → 122 (old paths intact) ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

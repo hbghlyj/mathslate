@@ -1144,7 +1144,11 @@
                 ritems.splice(ridx, 1, json);
                 rebuildSlate(ritems); // sets modelBlocks = items.length
             } else {
-                editor.mje.addMath(json); // marker vanished — plain append
+                // marker vanished — plain append: endAppend keeps the
+                // wrapped addMath's mid-slate caret splice off this
+                // replace-selection heal path
+                endAppend++;
+                try { editor.mje.addMath(json); } finally { endAppend--; }
                 modelBlocks++;
             }
             caretEnd();
@@ -2264,7 +2268,10 @@
         if (!arr) {
             rebuildSlate(items); // re-register before anything else reads the fresh model
             clearSlotFocus();
-            editor.mje.addMath(json); // slot vanished: plain end-append
+            // slot vanished — plain end-append: endAppend keeps the
+            // wrapped addMath's mid-slate caret splice off this heal path
+            endAppend++;
+            try { editor.mje.addMath(json); } finally { endAppend--; }
             modelBlocks++;
             caretEnd();
             return;
@@ -2940,6 +2947,12 @@
     // argument, the ARG_MACROS conversion) must not trigger the generic
     // first-placeholder arm — each wraps its writes in this counter.
     var armSuppress = 0;
+    // Set around insertChar's explicit plain-END-appends (the
+    // replace-selection marker-vanished and slot-vanished heal paths):
+    // tells the wrapped addMath not to divert them into its mid-slate
+    // caret splice — they documented "append at the end" long before the
+    // splice existed.
+    var endAppend = 0;
 
     // FEATURE: inserting a structure whose JSON carries blank placeholders
     // (a toolbox structure, clicked or — via the documented drop:hit hook —
@@ -3298,6 +3311,37 @@
                     if (hit) { swapPlaceholderInSlot(items, hit, [node, '[]']); }
                 }
                 return; // NOT routed through the core: it belongs in the slot
+            }
+            // A tool arriving while the fake caret is parked mid-slate — a
+            // toolbar click, a canvas-background drop, the TeX tab's
+            // compile — used to miss the caret entirely: core addMath
+            // APPENDS at the end of the slate (the "type 13, ←, click the
+            // toolbar 2 → 132" report; 123 was expected). Mirror
+            // insertChar's mid-slate gap splice: parse the tool's node,
+            // splice it in AT the caret, step the caret past it, and arm
+            // its first placeholder exactly like the append path does.
+            // Only the FREE caret owns a gap, so every other cursor owner
+            // keeps its old path: a real selection or armed fill-box (the
+            // core inserts at the selection), a slot focus (its own
+            // machinery), a script lock or arm, the macro box, the matrix
+            // dialog's confirm, an app-internal rebuild burst, or an
+            // explicit end-append (insertChar's heal fallbacks).
+            if (!appRebuild && !armSuppress && !matrixDirect && !matrixPending
+                && !endAppend && !script.awaiting && !script.locked
+                && !macroState.active && !hasSlateSelection() && !slotFocus.active
+                && caret.gap < modelBlocks) {
+                var spliceNode = null;
+                try { spliceNode = JSON.parse(normalizeCompiledFrac(json) || json); }
+                catch (e) { spliceNode = null; }
+                if (spliceNode) {
+                    var spliceItems = topItems(); // clean deep-copied JSON read
+                    spliceItems.splice(caret.gap, 0, spliceNode);
+                    rebuildSlate(spliceItems); // re-register; sets modelBlocks
+                    caret.gap++; // the caret steps past the inserted block
+                    refreshCaret();
+                    armBoxAfterInsert(json); // focus the first empty placeholder
+                    return;
+                }
             }
             var result = origAdd.call(this, normalizeCompiledFrac(json) || json);
             armBoxAfterInsert(json); // focus the first empty placeholder
