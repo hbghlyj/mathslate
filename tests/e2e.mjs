@@ -2619,6 +2619,64 @@ await texIs68('{b4}_3');
 console.log('    msub: b_3 ← ← parked at b|_{3}; 4 grew the base → {b4}_3 ✓');
 await page.click('#btn-clear-slate');
 
+console.log('79. ^ _ / with the free caret mid-slate bind the block LEFT of the caret');
+// the report's caret pathway: 12, <- (caret after the 1), ^ wraps the 1 —
+// startScript's doc.pop() used to grab the slate's last block (the 2)
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft'); // caret between the 1 and the 2
+await page.waitForTimeout(600);
+await page.keyboard.type('^');
+await texIs68('1^{}2');
+await page.keyboard.type('34'); // the fresh argument owns the cursor
+await texIs68('1^{34}2');
+console.log('    report flow: 12 ← ^ 34 → 1^{34}2 (the 1 bound, the 2 kept its place) ✓');
+// deeper in the row each step binds its immediate left neighbour
+await freshSlate68();
+await page.keyboard.type('123');
+await texIs68('123');
+await page.keyboard.press('ArrowLeft'); // between 2 and 3
+await page.waitForTimeout(400);
+await page.keyboard.type('_');
+await texIs68('12_{}3');
+await page.keyboard.type('x');
+await texIs68('12_x3');
+console.log('    123 ← _ x → 12_x3 ✓');
+await freshSlate68();
+await page.keyboard.type('123');
+await texIs68('123');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft'); // between 1 and 2
+await page.waitForTimeout(400);
+await page.keyboard.type('_');
+await texIs68('1_{}23');
+console.log('    123 ←← _ → 1_{}23 ✓');
+// fractions too: the numerator is the block left of the caret
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(400);
+await page.keyboard.type('/');
+await texIs68('\\frac{1}{}2');
+await page.keyboard.type('y');
+await texIs68('\\frac{1}{y}2');
+console.log('    12 ← / y → \\frac{1}{y}2 ✓');
+// parked before the first block, the wrap inserts at the caret with a blank base
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(400);
+await page.keyboard.type('^');
+await texIs68('{}^{}12');
+await page.keyboard.type('x');
+await texIs68('{}^x12');
+console.log('    12 ←← ^ x → {}^x12 (blank base at the caret, nothing grabbed from afar) ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

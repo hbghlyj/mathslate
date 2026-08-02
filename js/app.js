@@ -883,6 +883,14 @@
             startStructureAtFocus(evt.value);
             return;
         }
+        // ^ _ / with the free caret parked MID-SLATE: the wrap binds the
+        // block left of the caret in place — never the slate's last block
+        // (startScript's doc.pop() grabbed it wherever the cursor sat).
+        if (caret.gap < modelBlocks && !hasSlateSelection()) {
+            inputBusy = true; // arming the fresh argument box resumes the pump
+            startScriptAtCaret(evt.value);
+            return;
+        }
         inputBusy = true; // startScript's async arming resumes the pump
         startScript(evt.value);
     }
@@ -1032,6 +1040,54 @@
             // Bounded at ~2 s: a clear-slate mid-arm leaves queueQuiet()
             // false for good and would stall the pump ~15 s; the planted
             // slot focus above already routes queued input correctly.
+            pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
+        }, 40, resumeInput);
+    }
+
+    // ^ _ / with the free caret parked MID-SLATE (no selection, no slot
+    // focus, nothing locked): bind the block LEFT of the caret — the
+    // caret-relative newest-wins — replacing it where it stands and
+    // keeping every block right of the caret in place, instead of
+    // startScript's doc.pop() grabbing the slate's LAST block wherever
+    // the cursor sits (the "12, caret after the 1, ^ wrapped the 2 →
+    // 1{2}^{ }" report). With nothing left of the caret (parked before
+    // the first block) the wrap inserts at the caret with a blank base.
+    // Same planted-slot-focus + user-facing shim arm as
+    // wrapSelectedStructure: the fresh argument box owns the cursor and
+    // fills accumulate inside.
+    function startScriptAtCaret(kind) {
+        var job = JOBS[kind];
+        if (!job) { resumeInput(); return; }
+        if (script.awaiting) { cancelScript(); } // mostly already cancelled by the pump
+        deselectSlate(); // heal rule: clear selections before clear()s
+        var items = topItems();
+        var gap = Math.max(0, Math.min(caret.gap, items.length));
+        if (gap === items.length) { startScript(kind); return; } // end caret: classic newest-wins
+        var base = gap > 0 ? items[gap - 1] : '[]'; // blank base at the slate's start
+        var node = [job.tag, {tex: job.tex}, [base, ['mrow', {}, ['[]']]]];
+        var slotContent = node[2][1][2];
+        items.splice(gap > 0 ? gap - 1 : 0, gap > 0 ? 1 : 0, node); // replace left block, else insert
+        clearSlotFocus(); // the wrap owns the cursor now
+        slotFocus.active = true;
+        slotFocus.top = gap > 0 ? gap - 1 : 0;
+        slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → slot content
+        slotFocus.caretIdx = 0; // empty argument: caret at its start
+        bookmarkSlot(items, slotContent);
+        var si = blankIndexInArray(items, slotContent);
+        var stale = blankIds();
+        rebuildSlate(items); // sets modelBlocks = items.length
+        caret.gap = slotFocus.top + 1; // park after the wrap
+        refreshCaret();
+        pollUntil(function () {
+            if (!queueQuiet()) { return false; }
+            var id = blankIds()[si];
+            return !!(id && stale.indexOf(id) === -1 && findShim(id));
+        }, function () {
+            var id = blankIds()[si];
+            var shim = id ? findShim(id) : null;
+            if (shim) { shim.click(); } /* user-facing, NOT a programmatic
+                arm: filling passes fillClickedSlot, which plants the durable
+                slot focus INSIDE the argument */
             pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
         }, 40, resumeInput);
     }

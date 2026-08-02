@@ -208,7 +208,16 @@ parks the same way for subscripts (`4` → `{b4}_3`). (Steps 46, 59 and
 the base park and back in on `→`; step 59's radical walk now grows the
 base inside `\sqrt{b^2}`; step 77 chains the entered-slot walk onto the
 base's end.)
-78 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the caret-pathway binding report: with the free caret
+mid-slate, `^`/`_`/`/` bind the block LEFT of the caret in place —
+`12` `←` `^` wraps the 1, never the last block, and fills land inside
+(`34` → `1^{34}2`); each step deeper binds its own left neighbour
+(`123` `←` `_` `x` → `12_x3`, `123` `←` `←` `_` → `1_{}23`); `/`
+fractionates the left block (`y` → `\frac{1}{y}2`); and parked before the
+first block the wrap inserts there with a blank base
+(`12` `←` `←` `^` `x` → `{}^x12`). (The click-selection pathway of the
+same report is item 21, pinned by step 68.)
+79 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

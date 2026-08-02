@@ -27,6 +27,13 @@ With a slate block **selected** (clicked), `^`, `_` and `/` wrap the
 place). Selecting a *part* of a structure (a fraction's numerator) wraps
 its whole top-level block (`\frac{1}{2}` → `{\frac{1}{2}}^{}`), with the
 fill landing in the fresh argument box — never in the base's own boxes.
+With the **free caret parked mid-slate** (moved there by `←`/`→` or the
+`<`/`>` buttons), the binding operators apply caret-relative newest-wins:
+the block immediately **left of the caret** is wrapped in place and
+everything right of it keeps its spot — `12`, `←`, `^` gives `1^{}2`;
+parked before the first block, the structure inserts at the caret with a
+blank base (`12`, `←`, `←`, `^`, `x` → `{}^x12`). Only at the end of the
+slate does the classic last-block wrap apply.
 Clearing the slate also drops any armed/selected box synchronously, so
 typing immediately after **Clear slate** cannot fall into a ghost
 placeholder and vanish.
