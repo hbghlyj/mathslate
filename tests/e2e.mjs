@@ -693,22 +693,24 @@ console.log('    edge-step let it out; "c" continues after →', JSON.stringify(
 await page.keyboard.type('d^4');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}cd^4', null, { timeout: 15000 });
 await page.keyboard.press('ArrowLeft');
-await page.keyboard.press('ArrowLeft'); // past the left edge: exits before the block
+await page.keyboard.press('ArrowLeft'); // past the script's left edge: parks beside the base (d|^{4})
 await page.waitForFunction(() =>
     !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'), null, { timeout: 10000 });
-await page.waitForFunction(() => {
-    const c = document.querySelector('.mathslate-caret');
-    return !!c && c.style.position === 'absolute';
-}, null, { timeout: 10000 });
-console.log('    left edge-step exited; caret anchored before the block ✓');
-await page.keyboard.press('ArrowRight');
-await page.waitForFunction(() => {
-    const c = document.querySelector('.mathslate-caret');
-    return !!c && !c.style.position;
-}, null, { timeout: 10000 });
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // the parked caret's socket between base and script
+await page.keyboard.type('w'); // extends the base — |a^{2} was the report's wrong jump
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}c{dw}^4', null, { timeout: 15000 });
+console.log('    left edge-step parked at the base end; "w" grew the base →', JSON.stringify(await texNS()));
+await page.keyboard.press('ArrowRight'); // roundtrip: back into the script's start
+await page.keyboard.type('z');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}c{dw}^{z4}', null, { timeout: 15000 });
+console.log('    → roundtripped into the script start; "z" filled there →', JSON.stringify(await texNS()));
+await page.keyboard.press('ArrowRight'); // walks to the script's end…
+await page.keyboard.press('ArrowRight'); // …and one more steps out right, after the block
 await page.keyboard.type('e');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}cd^4e', null, { timeout: 15000 });
-console.log('    back at the end →', JSON.stringify(await texNS()));
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}c{dw}^{z4}e', null, { timeout: 15000 });
+console.log('    rightward walk exits after the block; "e" at the slate end →', JSON.stringify(await texNS()));
 
 console.log('47. Enter lets the cursor out of a script block too');
 await page.click('#btn-clear-slate');
@@ -1129,15 +1131,17 @@ await page.waitForFunction(() =>
 await page.keyboard.type('2');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 20000 });
 await page.keyboard.press('ArrowLeft'); // caret before the 2, inside the argument
-await page.keyboard.press('ArrowLeft'); // past the argument's left edge: peel into the radicand, before b^2
-await page.keyboard.type('w');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{wb^2}', null, { timeout: 20000 });
-console.log('    ←×2 peeled leftwards into the radicand; "w" landed before b^2 →', JSON.stringify(await texNS()), '✓');
-await page.keyboard.press('ArrowLeft'); // caret before the w, still in the radicand
+await page.keyboard.press('ArrowLeft'); // past the argument's left edge: park at the base's end (b|^{2})
+await page.keyboard.type('w'); // extends the base, inside the radicand
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{{bw}^2}', null, { timeout: 20000 });
+console.log('    ←×2 parked at the script base\'s end inside the radicand; "w" grew the base →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('ArrowLeft'); // between b and w in the base
+await page.keyboard.press('ArrowLeft'); // before the base, still inside the block
+await page.keyboard.press('ArrowLeft'); // peel: parked before bw^2, back in the radicand
 await page.keyboard.press('ArrowLeft'); // past the radicand's left edge: out to the slate, before the block
 await page.keyboard.type('v');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'v\\sqrt{wb^2}', null, { timeout: 20000 });
-console.log('    ←×2 more parked before the block at top level →', JSON.stringify(await texNS()), '✓');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'v\\sqrt{{bw}^2}', null, { timeout: 20000 });
+console.log('    through the base, peeled into the radicand and out before the block →', JSON.stringify(await texNS()), '✓');
 
 console.log('60. launch focus: the workspace owns the caret at boot; first keystrokes land on the slate');
 await page.reload({ waitUntil: 'domcontentloaded' });
@@ -1564,6 +1568,1667 @@ await page.waitForFunction(() =>
     && ![...document.querySelectorAll('#mathslate-editor #canvas mjx-mi')].some((m) => !m.textContent.trim()),
     null, { timeout: 15000 });
 console.log('    insertion renders both ∂ glyphs on the slate (U+1D715, same as real \\frac{\\partial}{\\partial}) ✓');
+
+console.log('68. selection-aware wrap: ^ _ / bind to the SELECTED block, not the last one');
+// Click the i-th top-level block like a user does (its drop-shim), then
+// wait for the selection marker. The shim only exists once MathJax
+// rendered the row, so retry inside the wait.
+async function clickTopBlock68(idx) {
+    await page.waitForFunction((i) => {
+        const rows = [...document.querySelectorAll('#mathslate-editor .mathslate-preview > div')].filter((d) => d.id);
+        if (rows.length <= i) { return false; }
+        const shim = [...document.querySelectorAll('span[id="' + rows[i].id + '"]')]
+            .find((n) => getComputedStyle(n).position === 'absolute');
+        if (!shim) { return false; }
+        shim.click();
+        return true;
+    }, idx, { timeout: 10000 });
+    await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 10000 });
+}
+async function texIs68(want) {
+    await page.waitForFunction((w) => document.getElementById('current-tex').value.replace(/\s+/g, '') === w, want, { timeout: 15000 });
+}
+async function freshSlate68() {
+    await page.click('#btn-clear-slate');
+    await page.click('main');
+    await page.waitForTimeout(250);
+}
+
+// control (no selection): the classic newest-wins wrap still takes the LAST block
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.type('^');
+await texIs68('12^{}');
+console.log('    control: "12" + ^ → "12^{}" (no selection: last block wrapped) ✓');
+
+// the report: "12", click the "1", ^ must wrap the 1 — and the argument
+// must own the cursor afterwards. The fill is typed blind on purpose (no
+// marker wait): the wrap's planted slot focus routes it either way.
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await clickTopBlock68(0);
+await page.keyboard.type('^');
+await texIs68('1^{}2');
+await page.keyboard.type('34');
+await texIs68('1^{34}2');
+console.log('    "12", select "1", ^ → "1^{}2"; typing fills the argument → "1^{34}2" ✓');
+
+// mid-slate selection: the wrap happens WHERE the selection stood
+await freshSlate68();
+await page.keyboard.type('12+3');
+await texIs68('12+3');
+await clickTopBlock68(1);
+await page.keyboard.type('_');
+await texIs68('12_{}+3');
+await page.keyboard.type('9');
+await texIs68('12_9+3');
+console.log('    "12+3", select "2", _ → "12_{}+3" (in place), fill → "12_9+3" ✓');
+
+// the / trigger on a selection wraps it into a numerator
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await clickTopBlock68(0);
+await page.keyboard.type('/');
+await texIs68('\\frac{1}{}2');
+await page.keyboard.type('5');
+await texIs68('\\frac{1}{5}2');
+console.log('    "12", select "1", / → "\\frac{1}{}2", fill → "\\frac{1}{5}2" ✓');
+
+// a nested selection (a fraction's numerator) wraps its whole top-level
+// block — and the fresh argument box, never the fraction's own boxes,
+// becomes the cursor
+await freshSlate68();
+await page.keyboard.type('1/2');
+await texIs68('\\frac{1}{2}');
+await page.waitForFunction(() => {
+    const row = [...document.querySelectorAll('#mathslate-editor .mathslate-preview > div')].filter((d) => d.id)[0];
+    if (!row) { return false; }
+    const numDiv = row.querySelector('div[id]');
+    if (!numDiv) { return false; }
+    const shim = [...document.querySelectorAll('span[id="' + numDiv.id + '"]')]
+        .find((n) => getComputedStyle(n).position === 'absolute');
+    if (!shim) { return false; }
+    shim.click();
+    return true;
+}, null, { timeout: 10000 });
+await page.waitForFunction(() => !!document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected'), null, { timeout: 10000 });
+await page.keyboard.type('^');
+await texIs68('{\\frac{1}{2}}^{}');
+await page.keyboard.type('3');
+await texIs68('{\\frac{1}{2}}^3');
+console.log('    select a frac numerator, ^ → "{\\frac{1}{2}}^{}"; the fill lands in the argument, not in the frac ✓');
+await page.click('#btn-clear-slate');
+
+console.log('69. fraction cursor navigation: ← climbs denominator → numerator, final ← exits left');
+// helpers from step 68 are reused: freshSlate68, texIs68, clickTopBlock68
+// Locked / flow (typed): ← at the denominator's START jumps to the
+// numerator's END instead of exiting the fraction.
+await freshSlate68();
+await page.keyboard.type('a/bc');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // b|c inside the denominator
+await page.keyboard.type('X');
+await texIs68('\\frac{a}{bXc}');
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // to the denominator's start
+await page.keyboard.press('ArrowLeft'); // past it: jump to the numerator's END
+await page.keyboard.type('Y');
+await texIs68('\\frac{aY}{bc}');
+console.log('    locked: ← at the denominator start climbs to the numerator end →', "\\frac{aY}{bc} ✓");
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // to the numerator's start
+await page.keyboard.type('Z');
+await texIs68('\\frac{Za}{bc}');
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{a}{bc}');
+await page.keyboard.press('ArrowLeft'); // past the numerator's start: exit left
+await page.keyboard.type('W');
+await texIs68('W\\frac{a}{bc}');
+console.log('    locked: the numerator walks left, one final ← exits the fraction →', "W\\frac{a}{bc} ✓");
+
+// click-focused slot flow (the same navigation after a box fill) + the → roundtrip
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await clickTopBlock68(0);
+await page.keyboard.type('/');
+await texIs68('\\frac{1}{}2');
+await page.keyboard.type('5');
+await texIs68('\\frac{1}{5}2');
+await page.keyboard.press('ArrowLeft'); // denominator start
+await page.keyboard.press('ArrowLeft'); // jump to the numerator's end
+await page.keyboard.type('Y');
+await texIs68('\\frac{1Y}{5}2');
+console.log('    focused: ← at the denominator start climbs to the numerator end →', "\\frac{1Y}{5}2 ✓");
+await page.keyboard.press('ArrowRight'); // roundtrip: back to the denominator's START
+await page.keyboard.type('Q');
+await texIs68('\\frac{1Y}{Q5}2');
+console.log('    focused: → at the numerator end drops to the denominator start →', "\\frac{1Y}{Q5}2 ✓");
+await page.keyboard.press('Backspace');
+await texIs68('\\frac{1Y}{5}2');
+
+// a STRUCTURE base (an empty radical) is wrapped invisibly: the canvas and
+// the TeX stay identical while the caret anchors after the radical
+await freshSlate68();
+await page.keyboard.type('\\sqrt');
+await page.keyboard.type('/'); // closes the macro, wraps the radical
+await texIs68('\\frac{\\sqrt{}}{}');
+await page.keyboard.type('b');
+await texIs68('\\frac{\\sqrt{}}{b}');
+await page.keyboard.press('ArrowLeft'); // denominator start
+await page.keyboard.press('ArrowLeft'); // jump to the numerator's end
+await page.keyboard.type('Y');
+await texIs68('\\frac{\\sqrt{}Y}{b}');
+console.log('    structure base "\\sqrt{}" stays intact, the fill anchors after it →', "\\frac{\\sqrt{}Y}{b} ✓");
+await page.click('#btn-clear-slate');
+
+console.log('70. inserting a structure focuses its first placeholder; Tab / Shift+Tab cycle the empty boxes');
+// step-local helpers (freshSlate68/texIs68 from step 68 are reused)
+async function clickFracTool70() {
+    await page.waitForFunction(() => {
+        const tabs = document.querySelectorAll('#mathslate-editor .yui3-tab');
+        if (tabs.length < 6) { return false; }
+        tabs[5].querySelector('.yui3-tab-label, a').click();
+        return true;
+    }, null, { timeout: 10000 });
+    await page.waitForFunction(() => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        const s = spans.find((x) => x.title === '\\frac{\u25FB}{\u25FB}');
+        if (!s) { return false; }
+        s.closest('.yui3-dd-draggable').click();
+        return true;
+    }, null, { timeout: 10000 });
+}
+// Target-specific arm wait: a plain "any blank is selected" wait
+// STALE-MATCHES when an old box is still armed at Tab time (the cycle
+// behind it is multi-tick under render congestion); wait for the
+// marker on the EXPECTED blank index instead.
+async function waitBlankIdx70(idxExpected) {
+    await page.waitForFunction((idx) => {
+        const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
+        if (!sel || !sel.id) { return false; }
+        const blanks = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+            .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').map((d) => d.id);
+        return blanks.indexOf(sel.id) === idx;
+    }, idxExpected, { timeout: 12000 });
+}
+const selBlankIdx70 = () => page.evaluate(() => {
+    const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
+    const blanks = [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+        .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').map((d) => d.id);
+    return { idx: sel ? blanks.indexOf(sel.id) : -1, count: blanks.length };
+});
+async function waitSelectedBox70() {
+    await page.waitForFunction(() => {
+        const sel = document.querySelector('#mathslate-editor .mathslate-workspace .mathslate-selected');
+        if (!sel || !sel.id) { return false; }
+        return [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+            .some((d) => d.id === sel.id && !d.querySelector('div') && d.textContent.trim() === '');
+    }, null, { timeout: 10000 });
+}
+
+// 1) toolbox structure insert arms the FIRST empty box as the cursor
+await freshSlate68();
+await clickFracTool70();
+await texIs68('\\frac{}{}');
+await waitSelectedBox70();
+let info70 = await selBlankIdx70();
+if (info70.idx !== 0 || info70.count !== 2) {
+    throw new Error('fraction insert must arm the numerator box first (got idx ' + info70.idx + ' of ' + info70.count + ')');
+}
+await page.keyboard.type('1');
+await texIs68('\\frac{1}{}');
+console.log('    fraction tool click → numerator box armed; the fill landed inside ✓');
+
+// 2) Tab moves to the next empty box (denominator)
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('2');
+await texIs68('\\frac{1}{2}');
+console.log('    Tab → denominator box armed; fill →', "\\frac{1}{2} ✓");
+
+// 3) Shift+Tab wraps backwards (first box → last box)
+await freshSlate68();
+await clickFracTool70();
+await texIs68('\\frac{}{}');
+await waitSelectedBox70();
+await page.keyboard.type('1');
+await texIs68('\\frac{1}{}');
+await page.keyboard.press('Shift+Tab');
+await waitSelectedBox70();
+await page.keyboard.type('z');
+await texIs68('\\frac{1}{z}');
+console.log('    Shift+Tab wrapped backwards to the denominator box →', "\\frac{1}{z} ✓");
+
+// 4) single participating box: Tab is a no-op and typing stays in the slot
+await page.keyboard.press('Tab');
+await page.waitForTimeout(600);
+await page.keyboard.type('y');
+await texIs68('\\frac{1}{zy}');
+console.log('    single-box Tab no-op; typing continued inside the slot →', "\\frac{1}{zy} ✓");
+
+// 5) no empty boxes at all: Tab must not disturb a script lock
+await freshSlate68();
+await page.keyboard.type('a^b');
+await texIs68('a^b');
+await page.keyboard.press('Tab');
+await page.waitForTimeout(600);
+await page.keyboard.type('c');
+await texIs68('a^{bc}');
+console.log('    Tab without boxes is inert, the lock survived →', "a^{bc} ✓");
+
+// 6) across structures: Tab wraps around the slate; Shift+Tab goes back
+await freshSlate68();
+await clickFracTool70();
+await texIs68('\\frac{}{}');
+await waitSelectedBox70();
+await page.keyboard.type('1');
+await texIs68('\\frac{1}{}');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+await page.keyboard.type('x^');
+await texIs68('\\frac{1}{}x^{}');
+await page.keyboard.press('Tab'); // from the superscript box → first empty box (denominator)
+await waitBlankIdx70(0); // target-specific: the argument's own marker must not stale-match
+await page.keyboard.type('3');
+await texIs68('\\frac{1}{3}x^{}');
+await page.keyboard.press('Shift+Tab'); // back to the superscript argument
+await waitSelectedBox70();
+await page.keyboard.type('2');
+await texIs68('\\frac{1}{3}x^2');
+console.log('    Tab/Shift+Tab cycled fraction boxes ↔ script argument →', "\\frac{1}{3}x^2 ✓");
+await page.click('#btn-clear-slate');
+
+console.log('71. matrix tool asks for n×m dimensions; cells tab through row-major; size is remembered');
+// step-local helpers (freshSlate68/texIs68/waitSelectedBox70/selBlankIdx70 are reused)
+async function clickMatrixTool71() {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[5].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        const s = spans.find((x) => x.title.indexOf('matrix') !== -1);
+        s.closest('.yui3-dd-draggable').click();
+    });
+    await page.waitForFunction(() => !document.getElementById('matrix-dialog-backdrop').hidden, null, { timeout: 10000 });
+}
+async function setDims71(r, c) {
+    await page.$eval('#matrix-rows', (el, v) => { el.value = v; }, String(r));
+    await page.$eval('#matrix-cols', (el, v) => { el.value = v; }, String(c));
+}
+const dialogHidden71 = () => page.evaluate(() => document.getElementById('matrix-dialog-backdrop').hidden);
+const dialogDims71 = () => Promise.all([
+    page.$eval('#matrix-rows', (e) => e.value),
+    page.$eval('#matrix-cols', (e) => e.value)
+]);
+
+// 1) the click opens the dialog with 2×2 defaults and swallows the insert
+await freshSlate68();
+await clickMatrixTool71();
+let dims71 = await dialogDims71();
+if (dims71[0] !== '2' || dims71[1] !== '2') { throw new Error('matrix dialog must default to 2×2, got ' + dims71.join('×')); }
+await texIs68(''); // the tool insert waits for the dialog
+await setDims71(3, 3);
+await page.click('#matrix-ok');
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on Insert'); }
+await texIs68('\\matrix{&&\\\\&&\\\\&&}');
+await waitSelectedBox70();
+let minfo71 = await selBlankIdx70();
+if (minfo71.idx !== 0 || minfo71.count !== 9) {
+    throw new Error('3×3 matrix must arm the first of 9 cell boxes (got ' + minfo71.idx + ' of ' + minfo71.count + ')');
+}
+const status71 = await page.$eval('#status-line', (el) => el.textContent);
+if (status71.indexOf('3 × 3 matrix') === -1) { throw new Error('status must announce the 3 × 3 matrix, got: ' + status71); }
+console.log('    dialog 3×3 → 9 blank cells, the first armed as the cursor ✓');
+
+// 2) Shift+Tab wraps to the LAST cell; Tab wraps back and fills row-major
+await page.keyboard.press('Shift+Tab');
+await waitBlankIdx70(8); // target-specific: cell (1,1)'s marker must not stale-match
+minfo71 = await selBlankIdx70();
+if (minfo71.idx !== 8 || minfo71.count !== 9) {
+    throw new Error('Shift+Tab must wrap to the last cell (got idx ' + minfo71.idx + ' of ' + minfo71.count + ')');
+}
+await page.keyboard.type('z');
+await texIs68('\\matrix{&&\\\\&&\\\\&&z}');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('a');
+await texIs68('\\matrix{a&&\\\\&&\\\\&&z}');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await texIs68('\\matrix{a&b&\\\\&&\\\\&&z}');
+console.log('    Shift+Tab/Tab wrapped around the grid; fills landed row-major →', "\\matrix{a&b&\\\\&&\\\\&&z} ✓");
+
+// 3) cancel paths leave no trace — Cancel button, Escape, backdrop click
+await freshSlate68();
+await clickMatrixTool71();
+await page.click('#matrix-cancel');
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on Cancel'); }
+await texIs68('');
+await page.keyboard.type('q'); // the slate owns the keys again right away
+await texIs68('q');
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Escape');
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on Escape'); }
+await texIs68('');
+await clickMatrixTool71();
+await page.mouse.click(6, 6); // backdrop click-away
+if (!(await dialogHidden71())) { throw new Error('matrix dialog must close on a backdrop click'); }
+await texIs68('');
+console.log('    Cancel / Escape / backdrop-click all dismiss without inserting; typing resumed ✓');
+
+// 4) the chosen size is remembered; Enter confirms — a 2×1 matrix
+await clickMatrixTool71();
+dims71 = await dialogDims71();
+if (dims71[0] !== '3' || dims71[1] !== '3') { throw new Error('matrix dialog must remember 3×3, got ' + dims71.join('×')); }
+await setDims71(2, 1);
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{\\\\}');
+await waitSelectedBox70();
+await page.keyboard.type('a');
+await texIs68('\\matrix{a\\\\}');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await texIs68('\\matrix{a\\\\b}');
+console.log('    remembered 3×3 default, Enter-confirm, 2×1 fill →', "\\matrix{a\\\\b} ✓");
+
+// 5) dimensions clamp to 1…10 (0×99 → 1×10)
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(0, 99);
+await page.click('#matrix-ok');
+await texIs68('\\matrix{&&&&&&&&&}');
+await waitSelectedBox70();
+minfo71 = await selBlankIdx70();
+if (minfo71.count !== 10) { throw new Error('clamped 1×10 matrix must show 10 cells, got ' + minfo71.count); }
+console.log('    0×99 clamped to a 1×10 grid (10 blank cells) ✓');
+
+// 6) the remembered size drives drag-and-drop (the documented drop hook)
+const hook71 = await page.evaluate(() => {
+    const tpl = JSON.stringify(['mrow', {tex: ['\\matrix{', 0, '}']}, [['mtable', {rowspacing: '4pt', columnspacing: '1em'}, [
+        ['mtr', {}, [['mtd', {}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]],
+        ['mtr', {}, [['mtd', {tex: ['\\\\', 0]}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]]
+    ]]]]);
+    const out = window.__mathslateDropJSON(tpl);
+    const root = out && JSON.parse(out);
+    const count = (n, tag) => !Array.isArray(n) ? 0
+        : (n[0] === tag ? 1 : 0) + (Array.isArray(n[2]) ? n[2].reduce((acc, k) => acc + count(k, tag), 0) : 0);
+    return {
+        rows: root ? count(root, 'mtr') : -1,
+        cells: root ? count(root, 'mtd') : -1,
+        nonMatrix: window.__mathslateDropJSON(JSON.stringify(['mfrac', {tex: ['\\frac{', 0, '}{', 1, '}']}, ['[]', '[]']]))
+    };
+});
+if (hook71.rows !== 1 || hook71.cells !== 10 || hook71.nonMatrix !== null) {
+    throw new Error('drop hook must substitute the remembered 1×10 (got ' + JSON.stringify(hook71) + ')');
+}
+console.log('    __mathslateDropJSON substitutes the remembered 1×10 for drags, ignores other tools ✓');
+
+// 7) the TeX tab's typed \\matrix{…} is NOT the tool: no dialog, normal compile
+await freshSlate68();
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(500);
+await page.evaluate(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    input.value = '\\matrix{x&y\\\\z&w}';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await texIs68('\\matrix{x&y\\\\z&w}');
+if (!(await dialogHidden71())) { throw new Error('a typed TeX \\matrix must not open the size dialog'); }
+console.log('    typed TeX \\matrix{x&y\\\\z&w} compiled normally (no dialog) ✓');
+
+// 8) full circle: 2×2 from the dialog reproduces the legacy template exactly
+await freshSlate68();
+await clickMatrixTool71();
+dims71 = await dialogDims71();
+if (dims71[0] !== '1' || dims71[1] !== '10') { throw new Error('matrix dialog must remember 1×10, got ' + dims71.join('×')); }
+await setDims71(2, 2);
+await page.click('#matrix-ok');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('a');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('c');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('d');
+await texIs68('\\matrix{a&b\\\\c&d}');
+console.log('    dialog 2×2 fills to the legacy', "\\matrix{a&b\\\\c&d} ✓");
+await page.click('#btn-clear-slate');
+
+console.log('72. matrix wrapper setting: bare / ( ) / [ ] / { } / | | / ‖ ‖ brackets');
+// step-local helpers (clickMatrixTool71/setDims71/dialog*71 + step-70 box waits are reused)
+const setWrap72 = (v) => page.$eval('#matrix-wrap', (el, val) => { el.value = val; }, v);
+const wrapVal72 = () => page.$eval('#matrix-wrap', (el) => el.value);
+const canvasHas72 = (ch) => page.evaluate((c) => document.getElementById('canvas').textContent.indexOf(c) !== -1, ch);
+// the canvas typeset can lag the TeX read-out — poll glyph assertions
+const waitCanvasHas72 = (ch) => page.waitForFunction(
+    (c) => document.getElementById('canvas').textContent.indexOf(c) !== -1, ch, { timeout: 12000 });
+
+// 1) parentheses: the dialog opens on the remembered 2×2 with bare brackets
+await freshSlate68();
+await clickMatrixTool71();
+let dims72 = await dialogDims71();
+if (dims72[0] !== '2' || dims72[1] !== '2') { throw new Error('matrix dialog must remember 2×2, got ' + dims72.join('×')); }
+if ((await wrapVal72()) !== '') { throw new Error('the wrapper must start bare, got ' + (await wrapVal72())); }
+await setWrap72('p');
+await page.click('#matrix-ok');
+await texIs68('\\begin{pmatrix}&\\\\&\\end{pmatrix}');
+await waitSelectedBox70();
+let minfo72 = await selBlankIdx70();
+if (minfo72.idx !== 0 || minfo72.count !== 4) {
+    throw new Error('pmatrix must arm the first of 4 cells (got ' + minfo72.idx + ' of ' + minfo72.count + ')');
+}
+await waitCanvasHas72('(');
+await waitCanvasHas72(')');
+const status72 = await page.$eval('#status-line', (el) => el.textContent);
+if (status72.indexOf('pmatrix') === -1) { throw new Error('status must announce the pmatrix, got: ' + status72); }
+await page.keyboard.type('a');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('b');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('c');
+await page.keyboard.press('Tab');
+await waitSelectedBox70();
+await page.keyboard.type('d');
+await texIs68('\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}');
+console.log('    ( ) pmatrix 2×2 armed + filled →', "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}, slate shows the parens ✓");
+
+// 2) the wrapper is remembered; switch to [ ] via Enter-confirm
+await freshSlate68();
+await clickMatrixTool71();
+if ((await wrapVal72()) !== 'p') { throw new Error('matrix dialog must remember the pmatrix wrapper'); }
+await setWrap72('b');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{bmatrix}&\\\\&\\end{bmatrix}');
+await waitCanvasHas72('[');
+await waitCanvasHas72(']');
+console.log('    remembered p, switched to [ ] bmatrix via Enter → slate shows the brackets ✓');
+
+// 3) braces { } and single/double bars
+for (const w72 of [{v: 'B', tex: 'begin{Bmatrix}', glyph: '{'},
+                   {v: 'v', tex: 'begin{vmatrix}', glyph: '∣'},
+                   {v: 'V', tex: 'begin{Vmatrix}', glyph: '∥'}]) {
+    await freshSlate68();
+    await clickMatrixTool71();
+    await setWrap72(w72.v);
+    await page.click('#matrix-ok');
+    await texIs68('\\' + w72.tex + '&\\\\&\\end{' + w72.tex.slice(6));
+    await waitCanvasHas72(w72.glyph);
+}
+console.log('    { } Bmatrix, | | vmatrix, ‖ ‖ Vmatrix — TeX environments and slate delimiters ✓');
+
+// 4) drags inherit the remembered wrapper (V) through the documented hook
+const hook72 = await page.evaluate(() => {
+    const tpl = JSON.stringify(['mrow', {tex: ['\\matrix{', 0, '}']}, [['mtable', {}, [
+        ['mtr', {}, [['mtd', {}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]],
+        ['mtr', {}, [['mtd', {tex: ['\\\\', 0]}, ['[]']], ['mtd', {tex: ['&', 0]}, ['[]']]]]
+    ]]]]);
+    const root = JSON.parse(window.__mathslateDropJSON(tpl));
+    const inner = root[2][0];
+    return { tex: root[1].tex, kids: inner[2].map((k) => k[0]), moTex: inner[2][0][1].tex, mo: inner[2][0][2] };
+});
+if (hook72.tex[0] !== '\\begin{Vmatrix}' || hook72.tex[2] !== '\\end{Vmatrix}'
+    || hook72.kids.join(',') !== 'mo,mtable,mo' || hook72.moTex[0] !== '' || hook72.mo !== '∥') {
+    throw new Error('drop hook must substitute size AND wrapper, got ' + JSON.stringify(hook72));
+}
+console.log('    __mathslateDropJSON substitutes size AND wrapper (mo delimiters with empty tex) ✓');
+
+// 5) a typed TeX environment never opens the dialog
+await freshSlate68();
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(500);
+await page.evaluate(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    input.value = '\\begin{bmatrix}x&y\\\\z&w\\end{bmatrix}';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await texIs68('\\begin{bmatrix}x&y\\\\z&w\\end{bmatrix}');
+if (!(await dialogHidden71())) { throw new Error('a typed TeX bmatrix must not open the size dialog'); }
+console.log('    typed TeX \\begin{bmatrix}… compiled normally (no dialog) ✓');
+
+// 6) back to bare: the legacy template and no slate delimiters
+await freshSlate68();
+await clickMatrixTool71();
+if ((await wrapVal72()) !== 'V') { throw new Error('matrix dialog must remember the Vmatrix wrapper'); }
+await setWrap72('');
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.waitForTimeout(1000); // let any stale canvas typeset drain
+if (await canvasHas72('(')) { throw new Error('a bare matrix must not show delimiters'); }
+console.log('    wrapper back to none → legacy \\matrix{…}, no slate delimiters ✓');
+await page.click('#btn-clear-slate');
+
+console.log('73. exiting a focused fraction sheds the slot placeholder (the "□ stays after →" report)');
+// step-local helpers: the socket shows as an empty preview box and a □ glyph on the canvas
+const slateBoxCount73 = () => page.evaluate(() =>
+    [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+        .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').length);
+const canvasBoxCount73 = () => page.evaluate(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length);
+async function boxesAre73(n, label) {
+    try {
+        await page.waitForFunction((want) =>
+            [...document.querySelectorAll('#mathslate-editor .mathslate-preview div')]
+                .filter((d) => d.id && !d.querySelector('div') && d.textContent.trim() === '').length === want,
+            n, { timeout: 15000 });
+    } catch (e) {
+        throw new Error(label + ': expected ' + n + ' placeholder box(es), got ' + (await slateBoxCount73()));
+    }
+}
+async function canvasBoxesGone73(label) {
+    await page.waitForFunction(() => !document.querySelector('#mathslate-editor #canvas .mjx-c25FB'), null, { timeout: 12000 })
+        .catch(async () => { throw new Error(label + ': canvas □ glyph never went away'); });
+}
+
+// 1) the report flow: 1/\gamma Enter arms the slot socket; → sheds it and the caret exits
+await freshSlate68();
+await page.keyboard.type('1');
+await page.keyboard.press('/');
+await page.keyboard.type('\\gamma');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{1}{\\gamma}');
+await boxesAre73(1, 'the conversion arms the slot socket');
+await page.keyboard.press('ArrowRight');
+await texIs68('\\frac{1}{\\gamma}');
+await boxesAre73(0, '→ must shed the slot placeholder');
+await canvasBoxesGone73('→ out of the fraction');
+await page.keyboard.type('x'); // the caret transitioned cleanly outside
+await texIs68('\\frac{1}{\\gamma}x');
+console.log('    1/\\gamma Enter → socket armed; → sheds it (no box, no □), typing lands after the fraction ✓');
+
+// 2) Esc from the same state sheds it too
+await freshSlate68();
+await page.keyboard.type('1');
+await page.keyboard.press('/');
+await page.keyboard.type('\\gamma');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{1}{\\gamma}');
+await boxesAre73(1, 'conversion arms the socket (Esc flow)');
+await page.keyboard.press('Escape');
+await boxesAre73(0, 'Esc must shed the slot placeholder');
+await canvasBoxesGone73('Esc out of the fraction');
+console.log('    Escape from the armed socket sheds the placeholder the same way ✓');
+
+// 3) ← climbing keeps exactly ONE socket alive through the walk and the jump
+await freshSlate68();
+await page.keyboard.type('2');
+await page.keyboard.press('/');
+await page.keyboard.type('\\beta');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{2}{\\beta}');
+await boxesAre73(1, 'conversion arms the socket (climb flow)');
+await page.keyboard.press('ArrowLeft'); // walk to the denominator start
+await boxesAre73(1, 'mid-walk keeps the caret socket');
+await page.keyboard.press('ArrowLeft'); // climb to the numerator end
+await boxesAre73(1, 'the climb hands ONE socket to the numerator');
+await page.keyboard.type('9');
+await texIs68('\\frac{29}{\\beta}');
+await page.keyboard.press('ArrowLeft'); // walk the numerator
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft'); // …and out to the left
+await boxesAre73(0, 'the final ← sheds every placeholder');
+await canvasBoxesGone73('← out of the fraction');
+await page.keyboard.type('q');
+await texIs68('q\\frac{29}{\\beta}');
+console.log('    ← walked, climbed, filled \\frac{29}{\\beta}, exited clean →', "q\\frac{29}{\\beta} ✓");
+
+// 4) a filled denominator: socket continuity while typing, gone after →
+await freshSlate68();
+await page.keyboard.type('3');
+await page.keyboard.press('/');
+await page.keyboard.type('\\delta');
+await page.keyboard.press('Enter');
+await texIs68('\\frac{3}{\\delta}');
+await page.keyboard.type('7');
+await texIs68('\\frac{3}{\\delta7}');
+await boxesAre73(1, 'fill continuity keeps exactly one socket');
+await page.keyboard.press('ArrowRight');
+await boxesAre73(0, '→ sheds it after the fill');
+await canvasBoxesGone73('→ out of a filled denominator');
+console.log('    filled \\frac{3}{\\delta7} kept one socket, → shed it ✓');
+await page.click('#btn-clear-slate');
+
+console.log('74. matrix arrow navigation: cells walk row-major, edges exit, no phantom rows');
+// step-local: canvas grid-row count — the "third row appears" detector
+const gridRows74 = () => page.evaluate(() =>
+    document.querySelectorAll('#mathslate-editor #canvas mjx-mtable mjx-mtr').length);
+async function rowsStay74(n, label) {
+    await page.waitForTimeout(800); // give any corruption time to render
+    const got = await gridRows74();
+    if (got !== n) { throw new Error(label + ': grid grew to ' + got + ' rows (phantom row)'); }
+}
+
+// 1) THE REPORT: fill the first cell, caret before the 1, ← → exit before
+//    the matrix; no phantom third row may appear
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&\\\\&}');
+await page.keyboard.press('ArrowLeft'); // caret before the 1
+await page.keyboard.press('ArrowLeft'); // at the first cell's start → out
+await texIs68('\\matrix{1&\\\\&}');
+await rowsStay74(2, 'report flow');
+await page.keyboard.type('x');
+await texIs68('x\\matrix{1&\\\\&}');
+console.log('    1 in the first cell, ←← exited before the matrix, no third row, x landed before ✓');
+
+// 2) → from a cell's end walks row-major (same row, then the next row's
+//    first cell), and past the LAST cell exits after the matrix
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab');
+await page.keyboard.type('2');
+await texIs68('\\matrix{1&2\\\\&}');
+await page.keyboard.press('ArrowRight'); // end of row 1 → start of row 2
+await page.keyboard.type('3');
+await texIs68('\\matrix{1&2\\\\3&}');
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('4');
+await texIs68('\\matrix{1&2\\\\3&4}');
+await page.keyboard.press('ArrowRight'); // past the last cell → out
+await rowsStay74(2, '→ walk');
+await page.keyboard.type('z');
+await texIs68('\\matrix{1&2\\\\3&4}z');
+console.log('    → walked 1,2,3,4 row-major then exited after the matrix, z ✓');
+
+// 3) ← from a cell's start crosses up to the row above's LAST cell (and the
+//    fill still serializes — the templated-cell tex drop is pinned by 4/7)
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab');
+await page.keyboard.type('2');
+await page.keyboard.press('Tab');
+await page.keyboard.type('3');
+await texIs68('\\matrix{1&2\\\\3&}');
+await page.keyboard.press('ArrowLeft'); // caret before the 3
+await page.keyboard.press('ArrowLeft'); // at the start of (2,1) → END of (1,2)
+await page.keyboard.type('9');
+await texIs68('\\matrix{1&29\\\\3&}');
+console.log('    ← from (2,1) start handed the caret to (1,2) end → 29 ✓');
+
+// 4) ← from the freshly armed EMPTY first cell: clean exit, all four
+//    placeholders intact (the phantom row was a box pushed into the rows)
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.press('ArrowLeft');
+await texIs68('\\matrix{&\\\\&}');
+await rowsStay74(2, 'empty-cell exit');
+if ((await slateBoxCount73()) !== 4) {
+    throw new Error('the four cell placeholders must survive (← out of the empty first cell), got '
+        + (await slateBoxCount73()));
+}
+await page.keyboard.type('q');
+await texIs68('q\\matrix{&\\\\&}');
+console.log('    ← out of the empty first cell kept all 4 boxes, q landed before ✓');
+
+// 5) a WRAPPED matrix (pmatrix) obeys the same exit discipline
+await freshSlate68();
+await clickMatrixTool71();
+await setWrap72('p');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{pmatrix}&\\\\&\\end{pmatrix}');
+await page.keyboard.type('a');
+await texIs68('\\begin{pmatrix}a&\\\\&\\end{pmatrix}');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await rowsStay74(2, 'wrapped exit');
+await page.keyboard.type('q');
+await texIs68('q\\begin{pmatrix}a&\\\\&\\end{pmatrix}');
+console.log('    pmatrix first cell ←← exited clean before the parens ✓');
+
+// 6) a structure INSIDE a cell: → past its fraction peels into the cell
+//    content (the mtd-owner peel must stay legal), then hops to the next cell
+await freshSlate68();
+await clickMatrixTool71();
+await setWrap72(''); // 5 left the wrapper on parens
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('a');
+await page.keyboard.press('/');
+await page.keyboard.type('b');
+await texIs68('\\matrix{\\frac{a}{b}&\\\\&}');
+await page.keyboard.press('ArrowRight'); // past the denominator → beside it in the cell
+await page.keyboard.press('ArrowRight'); // cell end → next cell
+await page.keyboard.type('z');
+await texIs68('\\matrix{\\frac{a}{b}&z\\\\&}');
+await rowsStay74(2, 'fraction-in-cell peel');
+console.log('    a/b inside a cell peeled into the cell then hopped right → z ✓');
+
+// 7) templated-cell serialization: multi-token typed fills in '&'/'\\'-tex
+//    cells must appear in the TeX read-out whole (the mtd's template only
+//    references its child 0, so content lives in the cell's mrow group)
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('4');
+await page.keyboard.press('Tab');
+await page.keyboard.type('19');
+await texIs68('\\matrix{4&19\\\\&}');
+await page.keyboard.press('Tab');
+await page.keyboard.type('27');
+await texIs68('\\matrix{4&19\\\\27&}');
+console.log('    typed 19 and 27 into templated cells — every token serialized ✓');
+await page.click('#btn-clear-slate');
+
+console.log('75. norm delimiter tool: \\left\\|…\\right\\| alongside the other \\left brackets');
+// step-local: click a roots&brackets tool by its exact label title
+async function clickBracketTool75(title) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[5].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const s = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+            .find((x) => x.title === t);
+        if (!s) { throw new Error('tool not found: ' + t); }
+        s.closest('.yui3-dd-draggable').click();
+    }, title);
+}
+
+// 1) the tool sits in the tab with the bracket family, label ◻ boxed
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[5].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForFunction(() => {
+    const titles = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+        .map((s) => s.title);
+    return titles.includes('\\left\\|◻\\right\\|')
+        && titles.includes('\\left|◻\\right|'); // the abs tool is still there
+}, null, { timeout: 15000 });
+console.log('    \\left\\|◻\\right\\| label renders next to \\left|◻\\right| in the tab ✓');
+
+// 2) click inserts with the first box armed; fill lands inside the norm
+await freshSlate68();
+await clickBracketTool75('\\left\\|◻\\right\\|');
+await texIs68('\\left\\|\\right\\|');
+await page.keyboard.type('x');
+await texIs68('\\left\\|x\\right\\|');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c2016').length === 2,
+    null, { timeout: 15000 });
+console.log('    insert + fill x → \\left\\|x\\right\\| with ‖ delimiters typeset ✓');
+
+// 3) an in-slot structure wraps inside the norm
+await page.keyboard.press('/');
+await page.keyboard.type('y');
+await texIs68('\\left\\|\\frac{x}{y}\\right\\|');
+console.log('    x / y inside → \\left\\|\\frac{x}{y}\\right\\| ✓');
+
+// 4) the typed TeX path compiles the same delimiters (MathJax 4 supports \\|)
+await freshSlate68();
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForTimeout(400);
+await page.evaluate(() => {
+    const input = document.querySelector('#mathslate-editor input[type="text"]');
+    input.value = '\\left\\|y\\right\\|';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await texIs68('\\left\\|y\\right\\|');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c2016').length === 2,
+    null, { timeout: 15000 });
+console.log('    typed TeX \\left\\|y\\right\\| compiled with ‖ delimiters ✓');
+await page.click('#btn-clear-slate');
+
+console.log('76. \\gets and \\mapsto tools alongside \\to; \\leq/\\geq inequality tools');
+// step-local: click a relations-tab tool by its exact label title
+async function clickRelationTool76(title) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[1].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const s = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+            .find((x) => x.title === t);
+        if (!s) { throw new Error('tool not found: ' + t); }
+        s.closest('.yui3-dd-draggable').click();
+    }, title);
+    await page.waitForTimeout(600);
+}
+
+// 1) the arrows sit side by side with the existing \to in the label strip
+await page.evaluate(() => {
+    document.querySelectorAll('#mathslate-editor .yui3-tab')[1].querySelector('.yui3-tab-label, a').click();
+});
+await page.waitForFunction(() => {
+    const titles = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')]
+        .map((s) => s.title);
+    const to = titles.indexOf(' \\to ');
+    return to >= 0 && titles[to + 1] === ' \\gets ' && titles[to + 2] === ' \\mapsto ';
+}, null, { timeout: 15000 });
+console.log('    labels read \\to \\gets \\mapsto in a row in the relations tab ✓');
+
+// 2) click-fills produce the exact TeX and canvas glyphs
+for (const [title, want, glyph] of [
+    [' \\to ', 'a\\tob', 'mjx-c2192'],
+    [' \\gets ', 'a\\getsb', 'mjx-c2190'],
+    [' \\mapsto ', 'a\\mapstob', 'mjx-c21A6'],
+]) {
+    await freshSlate68();
+    await page.keyboard.type('a');
+    await texIs68('a');
+    await clickRelationTool76(title);
+    await page.keyboard.type('b');
+    await texIs68(want);
+    await page.waitForFunction((c) => document.querySelectorAll('#mathslate-editor #canvas .' + c).length === 1, glyph, { timeout: 15000 });
+}
+console.log('    a + \\to/\\gets/\\mapsto + b gives a\\to b / a\\gets b / a\\mapsto b, arrows typeset ✓');
+
+// 3) the inequality set: the pre-existing \leq \geq tools click-fill the same way
+for (const [title, want, glyph] of [
+    ['\\leq ', 'a\\leqb', 'mjx-c2264'],
+    ['\\geq ', 'a\\geqb', 'mjx-c2265'],
+]) {
+    await freshSlate68();
+    await page.keyboard.type('a');
+    await texIs68('a');
+    await clickRelationTool76(title);
+    await page.keyboard.type('b');
+    await texIs68(want);
+    await page.waitForFunction((c) => document.querySelectorAll('#mathslate-editor #canvas .' + c).length === 1, glyph, { timeout: 15000 });
+}
+console.log('    a + \\leq/\\geq + b gives a\\leq b / a\\geq b with ≤/≥ typeset ✓');
+
+// 4) the typed TeX path compiles both new macros natively
+for (const [src, want, glyph] of [
+    ['a \\gets b', 'a\\getsb', 'mjx-c2190'],
+    ['a \\mapsto b', 'a\\mapstob', 'mjx-c21A6'],
+]) {
+    await freshSlate68();
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const input = document.querySelector('#mathslate-editor input[type="text"]');
+        input.value = t;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, src);
+    await texIs68(want);
+    await page.waitForFunction((c) => document.querySelectorAll('#mathslate-editor #canvas .' + c).length === 1, glyph, { timeout: 15000 });
+}
+console.log('    typed TeX a \\gets b / a \\mapsto b compiled with ←/↦ ✓');
+await page.click('#btn-clear-slate');
+
+console.log('77. <- stepping onto a script block enters its script slot (the "a^2 arrow skip" report)');
+// the report: a^2, → to exit, ← must land INSIDE the superscript after
+// the 2, not jump to before the a
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowRight'); // exit the superscript
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft'); // the report's failing step
+// the model must be untouched…
+await page.waitForTimeout(700);
+await texIs68('a^2');
+// …while one socket box appeared (the caret's home inside the superscript)
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('3');
+await texIs68('a^{23}'); // the fill lands right after the 2
+console.log('    report flow: a^2 → ← types 3 INSIDE → a^{23} ✓');
+// more ← walks the slot; at its start the next ← steps OUT onto the
+// base's end (a|^{23} — parked between base and script, not past the
+// base) with its own socket, and typing extends the base there
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft'); // = the base's end
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('x');
+await texIs68('{ax}^{23}');
+console.log('    <<< through the slot, parked at the base end, x grew the base → {ax}^{23} ✓');
+// the walk continues through the base, and a final ← releases before the block
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(700);
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 }); // the socket dies with the exit
+await page.keyboard.type('y');
+await texIs68('y{ax}^{23}');
+console.log('    through the base and released before the block, y landed before ✓');
+// a → press from the free caret before the block parks between base and
+// script — the mirror of ←'s entry (the "asymmetrical right arrow"
+// report, step 80 pins the full chain): the model is untouched, the base
+// owns the cursor at its end, typing grows it, and the next →
+// roundtrips into the script slot's start
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // the parked caret's socket
+await texIs68('y{ax}^{23}'); // the park itself does not touch the model
+await page.keyboard.type('q');
+await texIs68('y{axq}^{23}');
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('w');
+await texIs68('y{axq}^{w23}');
+console.log('    → onto the block parks at the base end: q grew the base, → roundtripped into the script ✓');
+
+// msub gets the same entry
+await freshSlate68();
+await page.keyboard.type('b_3');
+await texIs68('b_3');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('4');
+await texIs68('b_{34}');
+console.log('    msub: b_3 → ← types 4 inside → b_{34} ✓');
+
+// an empty argument re-arms as its box: e^ exit, ← enters, f fills
+await freshSlate68();
+await page.keyboard.type('e^');
+await texIs68('e^{}');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await texIs68('e^{}'); // tex unchanged by the entry
+await page.keyboard.type('f');
+await texIs68('e^f');
+console.log('    empty argument: e^{} ← enters the box, f fills → e^f ✓');
+
+// plain neighbours are unaffected: a token left of the caret is still a plain block-step
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.keyboard.type('x');
+await texIs68('1x2');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+console.log('    plain-token neighbour: 12 ← x → 1x2 (no slot entry, no boxes) ✓');
+await page.click('#btn-clear-slate');
+
+console.log('78. ← past a script\'s start parks between base and script (the "left arrow skips the base" report)');
+// the report, verbatim: type a^2, one ← to a^{|2}, and the next ← must
+// park at a|^{2} — not skip the base to |a^{2}
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowLeft'); // a^{|2}, still locked
+await page.waitForFunction(() =>
+    document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft'); // the report's step: out to a|^{2}
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active')
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await texIs68('a^2'); // the model is untouched by the park
+await page.keyboard.type('x');
+await texIs68('{ax}^2'); // the base grows at the park point — never |xa^2
+console.log('    report flow: a^2 ← ← parks between base and script; x grew the base → {ax}^2 ✓');
+// → from there roundtrips into the script's start, mirroring the fraction hop
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('z');
+await texIs68('{ax}^{z2}');
+console.log('    → roundtripped into the argument start; z filled → {ax}^{z2} ✓');
+// msub parks the same way
+await freshSlate68();
+await page.keyboard.type('b_3');
+await texIs68('b_3');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active')
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('4');
+await texIs68('{b4}_3');
+console.log('    msub: b_3 ← ← parked at b|_{3}; 4 grew the base → {b4}_3 ✓');
+await page.click('#btn-clear-slate');
+
+console.log('79. ^ _ / with the free caret mid-slate bind the block LEFT of the caret');
+// the report's caret pathway: 12, <- (caret after the 1), ^ wraps the 1 —
+// startScript's doc.pop() used to grab the slate's last block (the 2)
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft'); // caret between the 1 and the 2
+await page.waitForTimeout(600);
+await page.keyboard.type('^');
+await texIs68('1^{}2');
+await page.keyboard.type('34'); // the fresh argument owns the cursor
+await texIs68('1^{34}2');
+console.log('    report flow: 12 ← ^ 34 → 1^{34}2 (the 1 bound, the 2 kept its place) ✓');
+// deeper in the row each step binds its immediate left neighbour
+await freshSlate68();
+await page.keyboard.type('123');
+await texIs68('123');
+await page.keyboard.press('ArrowLeft'); // between 2 and 3
+await page.waitForTimeout(400);
+await page.keyboard.type('_');
+await texIs68('12_{}3');
+await page.keyboard.type('x');
+await texIs68('12_x3');
+console.log('    123 ← _ x → 12_x3 ✓');
+await freshSlate68();
+await page.keyboard.type('123');
+await texIs68('123');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft'); // between 1 and 2
+await page.waitForTimeout(400);
+await page.keyboard.type('_');
+await texIs68('1_{}23');
+console.log('    123 ←← _ → 1_{}23 ✓');
+// fractions too: the numerator is the block left of the caret
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(400);
+await page.keyboard.type('/');
+await texIs68('\\frac{1}{}2');
+await page.keyboard.type('y');
+await texIs68('\\frac{1}{y}2');
+console.log('    12 ← / y → \\frac{1}{y}2 ✓');
+// parked before the first block, the wrap inserts at the caret with a blank base
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(400);
+await page.keyboard.type('^');
+await texIs68('{}^{}12');
+await page.keyboard.type('x');
+await texIs68('{}^x12');
+console.log('    12 ←← ^ x → {}^x12 (blank base at the caret, nothing grabbed from afar) ✓');
+await page.click('#btn-clear-slate');
+
+console.log('80. → stepping onto a script block parks at its base end (the "symmetrical right arrow" report)');
+// the report: a^2, free caret immediately left of the a, → must step
+// INTO the block — between the base and the script — not skip the
+// structure whole (the exact mirror of step 77's ← entry)
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowRight'); // exit the superscript lock
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+// walk the free caret to the block's front: script END → script START →
+// base END park → base start → released before the block
+for (let i = 0; i < 5; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 }); // released: the socket dies with the exit
+await texIs68('a^2'); // the walk never touched the model
+await page.keyboard.press('ArrowRight'); // the report's failing step
+await page.waitForTimeout(500);
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active')
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // parked: one socket box, no lock glow
+await texIs68('a^2'); // the park itself does not touch the model
+await page.keyboard.type('x');
+await texIs68('{ax}^2'); // typing at the park extends the base — never xa^2
+console.log('    report flow: a^2 front, → parked between base and script; x grew the base → {ax}^2 ✓');
+// the chain continues symmetrically with the ← walk: → hops into the
+// script slot's START…
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('z');
+await texIs68('{ax}^{z2}');
+console.log('    → roundtripped into the argument start; z filled → {ax}^{z2} ✓');
+// …walks to its END, and one more → steps out after the block
+await page.keyboard.press('ArrowRight');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('w');
+await texIs68('{ax}^{z2}w');
+console.log('    through the argument and out right: w landed after the block ✓');
+
+// msub parks the same way
+await freshSlate68();
+await page.keyboard.type('b_3');
+await texIs68('b_3');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+for (let i = 0; i < 5; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForTimeout(400);
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('4');
+await texIs68('{b4}_3');
+console.log('    msub: b_3 front, → parked at b|_{3}; 4 grew the base → {b4}_3 ✓');
+
+// a BLANK base has no edge to park behind: → keeps the whole-block step
+// (the base's box is reached by click/Tab)
+await freshSlate68();
+await page.keyboard.type('12');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(400);
+await page.keyboard.type('^');
+await texIs68('{}^{}12');
+await page.keyboard.type('x');
+await texIs68('{}^x12');
+for (let i = 0; i < 3; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForTimeout(400);
+await texIs68('{}^x12'); // released before the blank-base block
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('y');
+await texIs68('{}^xy12'); // a plain block right of the script, not in the base
+console.log('    blank base: {}^x12 front, → stepped past whole; y landed beside ✓');
+
+// parked MID-ROW the fill still lands in the slot: the gap is not a
+// cursor while a slot focus lives
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowRight'); // out of the lock
+await page.waitForTimeout(300);
+await page.keyboard.type('bc');
+await texIs68('a^2bc');
+for (let i = 0; i < 7; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowRight'); // parks on the mid-row block's base
+await page.waitForTimeout(500);
+await page.keyboard.type('q');
+await texIs68('{aq}^2bc'); // bc keep their spot; the base grows in place
+console.log('    mid-row park: a^2bc front, → q → {aq}^2bc (fill stayed in the slot) ✓');
+// the same rule keeps continuation typing inside a planted mid-row
+// argument (no gap splice while the slot focus lives)
+await freshSlate68();
+await page.keyboard.type('123');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.type('_');
+await texIs68('1_{}23');
+await page.keyboard.type('x');
+await texIs68('1_x23');
+await page.keyboard.type('y');
+await texIs68('1_{xy}23');
+console.log('    123 ←← _ x y → 1_{xy}23 (continuation accumulates in the slot) ✓');
+
+// plain-block neighbours are unaffected: → steps back over the 2 to the end
+await freshSlate68();
+await page.keyboard.type('12');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('x');
+await texIs68('12x');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+console.log('    plain neighbour: 12 ← → x → 12x (no park, no boxes) ✓');
+await page.click('#btn-clear-slate');
+
+console.log('81. <- stepping onto a matrix block enters its bottom-right cell (the "matrix arrow skip" report)');
+// the report: \\matrix{1&1\\\\1&1} with the caret immediately right of
+// the matrix block — ← must step INTO the bottom-right cell, not skip
+// the grid whole
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 2
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 3
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 4
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&1\\\\1&1}');
+await page.keyboard.press('ArrowRight'); // past the last cell: release after the matrix
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft'); // the report's failing step
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // one socket: the caret's home inside cell 4
+await texIs68('\\matrix{1&1\\\\1&1}'); // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{1&1\\\\1&12}'); // the fill lands at the cell's END
+console.log('    report flow: filled 2×2, right-of-matrix ← entered cell 4; 2 filled → \\matrix{1&1\\\\1&12} ✓');
+// step back out right and re-enter over a plain neighbour
+await page.keyboard.press('ArrowRight');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('x');
+await texIs68('\\matrix{1&1\\\\1&12}x');
+await page.keyboard.press('ArrowLeft'); // a plain step over the x
+await page.keyboard.press('ArrowLeft'); // onto the matrix: re-entry
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+// …and the row-major walk continues backwards cell by cell until the
+// caret releases before the matrix
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('y');
+await texIs68('y\\matrix{1&1\\\\1&12}x');
+console.log('    the walk continues backwards through every cell; y landed before the matrix ✓');
+
+// an EMPTY bottom-right cell behaves like an empty script argument: the
+// entry parks in its box and the fill lands, consuming the blank
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&1\\\\1&}');
+await page.keyboard.press('ArrowRight');   // into the empty cell…
+await page.keyboard.press('ArrowRight');   // …and past the grid's edge
+await page.waitForTimeout(500);
+await page.keyboard.press('ArrowLeft');    // back onto the matrix
+await page.waitForTimeout(500);
+await texIs68('\\matrix{1&1\\\\1&}');      // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{1&1\\\\1&2}');     // the blank consumed, 2 in the cell
+console.log('    empty bottom-right cell: ← parked in its box, 2 filled → \\matrix{1&1\\\\1&2} ✓');
+await page.click('#btn-clear-slate');
+
+console.log('82. TeX-tab fractions are real fractions: ← enters the denominator, climbs, releases');
+// the report: \\frac{a}{b} typed into the TeX tab compiles to an inert
+// mrow atom whose tex string shadows the children — no slot could be
+// focused, so ← skipped the whole structure. The lone-\\frac wrapper is
+// now promoted to a first-class fraction at insert time (byte-identical
+// TeX), and plain mfrac blocks got the denominator ← entry.
+async function compileTeX82(src) {
+    await page.evaluate(() => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[0].querySelector('.yui3-tab-label, a').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate((v) => {
+        const input = document.querySelector('#mathslate-editor input[type="text"]');
+        input.value = v;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, src);
+    await page.waitForTimeout(900);
+}
+await freshSlate68();
+await compileTeX82('\\frac{a}{b}');
+await texIs68('\\frac{a}{b}');
+await page.keyboard.press('ArrowLeft'); // the report's failing step
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // entered the denominator: one socket
+await texIs68('\\frac{a}{b}'); // the entry touches neither model nor TeX
+await page.keyboard.type('X');
+await texIs68('\\frac{a}{bX}'); // the fill lands at the denominator's END
+console.log('    report flow: TeX-tab \\frac{a}{b}, ← entered the denominator; X → \\frac{a}{bX} ✓');
+// walk to the denominator's start; one more ← climbs to the numerator's END
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.type('W');
+await texIs68('\\frac{aW}{bX}');
+console.log('    ← at the denominator start climbed to the numerator end; W → \\frac{aW}{bX} ✓');
+// → at the numerator's end roundtrips down to the denominator's START
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('Q');
+await texIs68('\\frac{aW}{QbX}');
+console.log('    → roundtrip dropped to the denominator start; Q → \\frac{aW}{QbX} ✓');
+// through the numerator and one final ← releases before the fraction
+for (let i = 0; i < 5; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('V');
+await texIs68('V\\frac{aW}{QbX}');
+console.log('    through the numerator and released before the fraction; V landed before ✓');
+
+// the variants: \\dfrac keeps its name; number leaves work; an empty
+// denominator's box fills; a nested structure stays an inert whole-block
+// step (normalizing it would corrupt its TeX)
+await freshSlate68();
+await compileTeX82('\\dfrac{ab}{cd}');
+await texIs68('\\dfrac{ab}{cd}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('X');
+await texIs68('\\dfrac{ab}{cdX}');
+console.log('    \\dfrac{ab}{cd}: ← entered, X → \\dfrac{ab}{cdX} ✓');
+await freshSlate68();
+await compileTeX82('\\frac{12}{34}');
+await texIs68('\\frac{12}{34}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.keyboard.type('X');
+await texIs68('\\frac{12}{34X}');
+console.log('    \\frac{12}{34}: ← entered, X → \\frac{12}{34X} ✓');
+await freshSlate68();
+await compileTeX82('\\frac{a}{}');
+await texIs68('\\frac{a}{}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.keyboard.type('X');
+await texIs68('\\frac{a}{X}');
+console.log('    empty denominator: ← parked in its box, X filled → \\frac{a}{X} ✓');
+await freshSlate68();
+await compileTeX82('\\frac{\\sqrt{2}}{b}');
+await texIs68('\\frac{\\sqrt{2}}{b}');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 }); // no entry: the whole-block step stands
+await page.keyboard.type('X');
+await texIs68('X\\frac{\\sqrt{2}}{b}'); // the inert compile's TeX is untouched
+console.log('    \\frac{\\sqrt{2}}{b}: nested structure stays inert; X landed before ✓');
+
+// toolbar fractions gain the same denominator entry
+await freshSlate68();
+await page.keyboard.type('1/5');
+await texIs68('\\frac{1}{5}');
+await page.keyboard.press('ArrowRight'); // exit the / lock
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft'); // now peels into the denominator
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('X');
+await texIs68('\\frac{1}{5X}');
+console.log('    toolbar fraction: 1/5 exit, ← entered the denominator; X → \\frac{1}{5X} ✓');
+await page.click('#btn-clear-slate');
+
+console.log('83. matrix tool environments: cases, aligned, array');
+// the request: multi-line / structurally aligned math directly from the
+// dialog — piecewise cases, aligned equation systems, custom arrays.
+// cases: the lone left brace shows on the slate (no right one), every
+// column flush-left
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(2, 2);
+await setWrap72('cases');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{cases}&\\\\&\\end{cases}');
+await page.keyboard.type('a');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('b');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('c');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('d');
+await texIs68('\\begin{cases}a&b\\\\c&d\\end{cases}');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c7B').length === 1
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c7D').length === 0
+        && [...document.querySelectorAll('#mathslate-editor #canvas mjx-mtd')]
+            .every((el) => getComputedStyle(el).textAlign === 'left'),
+    null, { timeout: 15000 });
+console.log('    cases 2×2 → \\begin{cases}a&b\\\\c&d\\end{cases}: lone { on the slate, columns flush-left ✓');
+// item 34's ← entry descends the environment wrapper too
+await page.keyboard.press('ArrowRight'); // out past the last cell
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('X');
+await texIs68('\\begin{cases}a&b\\\\c&dX\\end{cases}');
+console.log('    ← peeled into the cases last cell; X → \\begin{cases}a&b\\\\c&dX\\end{cases} ✓');
+
+// aligned: right/left equation-column pairs, nothing drawn around the grid
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(2, 2);
+await setWrap72('aligned');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{aligned}&\\\\&\\end{aligned}');
+await page.keyboard.type('a');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('=b');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('c');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('=d');
+await texIs68('\\begin{aligned}a&=b\\\\c&=d\\end{aligned}');
+await page.waitForFunction(() => {
+    const aligns = [...document.querySelectorAll('#mathslate-editor #canvas mjx-mtd')]
+        .map((el) => getComputedStyle(el).textAlign);
+    return aligns.join(',') === 'right,left,right,left'
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c7B').length === 0;
+}, null, { timeout: 15000 });
+console.log('    aligned 2×2 → \\begin{aligned}a&=b\\\\c&=d\\end{aligned}: right/left column pairs ✓');
+
+// array: bare custom grid, its TeX carries the {c…} column spec
+await freshSlate68();
+await clickMatrixTool71();
+await setDims71(2, 3);
+await setWrap72('array');
+await page.keyboard.press('Enter');
+await texIs68('\\begin{array}{ccc}&&\\\\&&\\end{array}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('2');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('3');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('4');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('5');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300);
+await page.keyboard.type('6');
+await texIs68('\\begin{array}{ccc}1&2&3\\\\4&5&6\\end{array}');
+await page.waitForFunction(() =>
+    [...document.querySelectorAll('#mathslate-editor #canvas mjx-mtd')]
+        .every((el) => getComputedStyle(el).textAlign === 'center'),
+    null, { timeout: 15000 });
+console.log('    array 2×3 → \\begin{array}{ccc}…\\end{array}: centered columns, colspec in the TeX ✓');
+
+// the dialog keeps remembering (env + 2×3 survive); reset it for the
+// matrix steps that run with the plain legacy default elsewhere
+await freshSlate68();
+await clickMatrixTool71();
+const remembered83 = await wrapVal72();
+if (remembered83 !== 'array') { throw new Error('the dialog forgot the array choice: ' + remembered83); }
+await page.$eval('#matrix-rows', (el) => { el.value = '2'; });
+await page.$eval('#matrix-cols', (el) => { el.value = '2'; });
+await setWrap72('');
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+console.log('    env choice remembered (array back in the dialog), reset to the legacy bare default ✓');
+await page.click('#btn-clear-slate');
+
+console.log('84. → stepping onto a matrix block enters its top-left cell (the "symmetrical right arrow" request)');
+// the request: \\matrix{1&1\\\\1&1} with the caret immediately LEFT
+// of the matrix block — → must step INTO the top-left cell parked at
+// its start, not skip the grid whole: the exact mirror of step 81's ←
+// entry. The row-major walk then runs forwards cell by cell until the
+// caret releases after the matrix
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 2
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 3
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 4
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&1\\\\1&1}');
+// walk all the way out to the left first (step 81's release)
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowRight'); // the request's step
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // one socket: the caret's home inside cell 1
+await texIs68('\\matrix{1&1\\\\1&1}'); // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{21&1\\\\1&1}'); // the fill lands at the cell's START
+console.log('    request flow: filled 2×2, left-of-matrix → entered cell 1; 2 filled → \\matrix{21&1\\\\1&1} ✓');
+// …and the row-major walk continues forwards cell by cell until the
+// caret releases after the matrix
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('x');
+await texIs68('\\matrix{21&1\\\\1&1}x');
+console.log('    the walk continues forwards through every cell; x landed after the matrix ✓');
+
+// an EMPTY top-left cell behaves like step 81's empty bottom-right one:
+// the entry parks in its box and the fill lands, consuming the blank
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 2
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 3
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 4
+await page.keyboard.type('1');
+await texIs68('\\matrix{&1\\\\1&1}');
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForTimeout(300);
+await texIs68('\\matrix{&1\\\\1&1}'); // the walk out does not touch the model
+await page.keyboard.press('ArrowRight');   // back onto the matrix from the left
+await page.waitForTimeout(300);
+await texIs68('\\matrix{&1\\\\1&1}');      // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{2&1\\\\1&1}');     // the blank consumed, 2 in the cell
+console.log('    empty top-left cell: → parked in its box, 2 filled → \\matrix{2&1\\\\1&1} ✓');
+await page.click('#btn-clear-slate');
+
+console.log('85. toolbar clicks insert at the free caret mid-slate (the "toolbar insert bypasses cursor" report)');
+// the report: type 13, ← (caret between the 1 and the 3), click the
+// toolbar 2 — the click APPENDED at the end (132) instead of inserting
+// at the caret (123). Toolbar clicks (and canvas drops / TeX-tab
+// compiles) now take the same mid-slate gap splice typed characters
+// take, and the caret steps past the inserted block
+async function clickToolByTitle85(tabIdx, title) {
+    await page.evaluate((i) => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[i].querySelector('.yui3-tab-label, a').click();
+    }, tabIdx);
+    await page.waitForTimeout(400);
+    await page.evaluate((t) => {
+        const spans = [...document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected span[title]')];
+        const s = spans.find((x) => x.title === t);
+        s.closest('.yui3-dd-draggable').click();
+    }, title);
+    await page.waitForTimeout(500);
+}
+async function clickToolByIndex85(tabIdx, toolIdx) {
+    await page.evaluate((i) => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab')[i].querySelector('.yui3-tab-label, a').click();
+    }, tabIdx);
+    await page.waitForTimeout(400);
+    await page.evaluate((idx) => {
+        document.querySelectorAll('#mathslate-editor .yui3-tab-panel-selected .yui3-dd-draggable')[idx].click();
+    }, toolIdx);
+    await page.waitForTimeout(500);
+}
+await freshSlate68();
+await page.keyboard.type('13');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(300);
+await clickToolByTitle85(3, '2'); // Latin tab, the "2" button
+await texIs68('123'); // the report's expectation: not 132
+await page.keyboard.type('+');
+await texIs68('12+3'); // the caret stepped past the inserted 2
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(200);
+await page.keyboard.type('x');
+await texIs68('12+3x'); // → walked over the 3 to the end
+console.log('    report flow: 13 ← click-2 → 123; + → 12+3; → x → 12+3x ✓');
+
+// a STRUCTURE tool splices at the caret the same way — and its first
+// placeholder still arms as the cursor
+await freshSlate68();
+await page.keyboard.type('13');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(300);
+await clickToolByIndex85(5, 0); // roots&brackets tab, the fraction tool
+await texIs68('1\\frac{}{}3');
+await page.keyboard.type('2');
+await texIs68('1\\frac{2}{}3');
+console.log('    fraction tool: 13 ← click → 1\\frac{}{}3; 2 → 1\\frac{2}{}3 (numerator armed) ✓');
+
+// the other cursor owners keep their paths: an armed box still takes
+// the click (the core's insert-at-selection), and a caret at the end
+// still appends
+await freshSlate68();
+await page.keyboard.type('^');
+await page.waitForTimeout(300);
+await clickToolByTitle85(3, '2');
+await texIs68('{}^2');
+await freshSlate68();
+await page.keyboard.type('12');
+await clickToolByTitle85(3, '2');
+await texIs68('122');
+console.log('    armed box: ^ click-2 → {}^2; caret at end: 12 click-2 → 122 (old paths intact) ✓');
+await page.click('#btn-clear-slate');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it

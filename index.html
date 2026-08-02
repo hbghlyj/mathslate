@@ -100,6 +100,10 @@
         <h2 class="card-title">1 · Build an equation</h2>
         <p class="card-hint">Click a symbol in the toolbox (or drag it onto the slate). Click a piece of the
            expression to select it, then click-or-drop onto another piece to insert inside it.
+           The <strong>matrix tool</strong> asks for its size first &mdash; any 1&times;1 to
+           10&times;10 grid, bare or wrapped in parentheses, brackets, braces or bars &mdash;
+           and drops you into the first cell, <kbd>Tab</kbd> hopping
+           cell to cell.
            The <em>T<sub>E</sub>X</em> tab lets you type TeX directly. <strong>Keyboard:</strong> type
            letters, digits and <code>+ &minus; * = ( ) [ ] &lt; &gt; , ; : ! ? | . '</code> straight into
            the slate. TeX triggers work like in TeX &mdash; <kbd>^</kbd> and <kbd>_</kbd> attach a
@@ -172,6 +176,49 @@
         </div>
     </section>
 </main>
+
+<!--
+ * Matrix size dialog: the toolbox's single matrix tool asks for its
+ * dimensions before inserting (1-10 rows and columns; the choice is
+ * remembered for the session). Driven entirely from js/app.js —
+ * openMatrixDialog()/confirmMatrix() rebuild the config template at the
+ * requested size, so the slate, the TeX and drag-and-drop all stay
+ * consistent.
+-->
+<div id="matrix-dialog-backdrop" class="matrix-dialog-backdrop" hidden>
+    <div id="matrix-dialog" class="matrix-dialog" role="dialog" aria-modal="true"
+         aria-labelledby="matrix-dialog-title">
+        <h3 id="matrix-dialog-title" class="matrix-dialog-title">Insert a matrix</h3>
+        <p class="matrix-dialog-hint">Pick the grid size (1&ndash;10 each way) and its brackets
+           &mdash; or a cases / aligned / array environment.
+           Both are remembered &mdash; the next matrix, and drags of the tool, reuse them.</p>
+        <div class="matrix-dialog-fields">
+            <label for="matrix-rows">Rows</label>
+            <input id="matrix-rows" type="number" min="1" max="10" step="1" value="2">
+            <span class="matrix-dialog-times" aria-hidden="true">&times;</span>
+            <label for="matrix-cols">Columns</label>
+            <input id="matrix-cols" type="number" min="1" max="10" step="1" value="2">
+        </div>
+        <div class="matrix-dialog-fields matrix-dialog-wrap">
+            <label for="matrix-wrap">Brackets / environment</label>
+            <select id="matrix-wrap">
+                <option value="" selected>None &mdash; \matrix</option>
+                <option value="p">( ) &mdash; pmatrix</option>
+                <option value="b">[ ] &mdash; bmatrix</option>
+                <option value="B">{ } &mdash; Bmatrix</option>
+                <option value="v">| | &mdash; vmatrix</option>
+                <option value="V">&#x2016; &#x2016; &mdash; Vmatrix</option>
+                <option value="cases">{ &mdash; cases (piecewise)</option>
+                <option value="aligned">aligned &mdash; equation system</option>
+                <option value="array">array &mdash; custom columns</option>
+            </select>
+        </div>
+        <div class="matrix-dialog-actions">
+            <button id="matrix-ok" class="btn primary">Insert matrix</button>
+            <button id="matrix-cancel" class="btn">Cancel</button>
+        </div>
+    </div>
+</div>
 
 <footer class="app-footer">
     <p>Mathslate &copy; 2013&ndash;2014 Daniel Thies, extracted from the

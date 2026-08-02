@@ -351,6 +351,7 @@
         wireCaretFocus();
         wireCaretDropGlow();
         wireAddMathCounter();
+        wireMatrixDialog();
         refreshCaret();
         // Keep the TeX read-out in sync with the slate (and re-evaluate the
         // caret: slate-internal selection changes reach us only by polling).
@@ -409,6 +410,14 @@
             if (editor && editor.mje) {
                 cancelScript();
                 macroReset();
+                clearSlotFocus(); // no structure survives the wipe
+                programmaticArmIdx = -1; // an armed box's marker dies with it
+                // Scrub the STALE selection synchronously: clear()'s
+                // re-render takes whole keystrokes under MathJax 4, and a
+                // lingering ghost marker makes a fast re-type insert before
+                // a blank id that no longer exists — a silent no-op that
+                // eats the character (the "type right after Clear" report).
+                deselectSlate();
                 inputQueue.length = 0;
                 resumeInput();
                 editor.mje.clear();
@@ -727,6 +736,13 @@
             finishMacro();
             return;
         }
+        if (evt.type === 'release') { // Space/Enter: decide at DEQUEUE time
+            inputQueue.shift();
+            if (script.awaiting) { inputQueue.unshift({type: 'script-exit'}); pumpInput(); return; }
+            inputQueue.unshift({type: 'macro-end'}); // a no-op when no box is open
+            pumpInput();
+            return;
+        }
         if (evt.type === 'script-exit') { // Space/Enter let the cursor out
             inputQueue.shift();
             exitScript();
@@ -737,6 +753,16 @@
             inputQueue.shift();
             if (!macroState.active) {
                 if (slotFocus.active) {
+                    // An armed BOX (the conversion's re-arm, a fill's, a
+                    // click's) is a live SELECTION on the slate — and
+                    // rebuildSlate's clear() degenerates into the core's
+                    // "remove the selected snippet" while one is live: the
+                    // rip would leave the old item on the slate mangled,
+                    // its placeholder box stuck RENDERED after the caret
+                    // moved on (the "□ stays after → out of a
+                    // fraction" report). Heal first, like the Esc branch
+                    // above and cycleBlank's clear-selections rule do.
+                    if (hasSlateSelection()) { deselectSlate(); }
                     // An arrow first moves the caret INSIDE the slot (between
                     // its tokens); only at an edge does the press step out —
                     // and even then it peels exactly ONE nesting level: a
@@ -755,8 +781,25 @@
                         slotFocus.caretIdx = navCi + evt.value;
                         rebuildSlate(navItems); // re-register the model
                     } else {
-                        var parent = navArr ? parentSlotOf(navItems, navArr) : null;
-                        if (parent) {
+                        // FRACTION NAVIGATION: at an mfrac slot's edge the
+                        // arrow steps into the SIBLING slot before any peel
+                        // lets the caret out — ← from the denominator's
+                        // start jumps up to the numerator's END, → from the
+                        // numerator's end drops to the denominator's start.
+                        // Repeated ← then walks the numerator to its start
+                        // and one final ← exits the fraction to the left.
+                        var sib = navArr ? fracSiblingSlot(navItems, navArr, evt.value) : null;
+                        var parent = (!sib && navArr) ? parentSlotOf(navItems, navArr) : null;
+                        if (sib) {
+                            stripSlotAnchorBox(navArr); // close the exited slot
+                            ensureSlotBox(sib.arr);
+                            slotFocus.path = sib.path;
+                            slotFocus.caretIdx = evt.value === -1
+                                ? slotTokenIndices(sib.arr).length // the numerator's END
+                                : 0; // the denominator's START
+                            bookmarkSlot(navItems, sib.arr);
+                            rebuildSlate(navItems); // re-register the model
+                        } else if (parent) {
                             stripSlotAnchorBox(navArr); // close the exited slot
                             ensureSlotBox(parent.arr);
                             slotFocus.path = parent.path;
@@ -779,6 +822,18 @@
             pumpInput();
             return;
         }
+        if (evt.type === 'tab') { // Tab / Shift+Tab: cycle the empty boxes
+            if (macroState.active) { // close the box first, then re-run
+                inputQueue.unshift({type: 'tab', value: evt.value});
+                inputQueue.unshift({type: 'macro-end'});
+                pumpInput();
+                return;
+            }
+            inputQueue.shift();
+            inputBusy = true; // cycleBlank's async arming resumes the pump
+            cycleBlank(evt.value);
+            return;
+        }
         // 'script' trigger (^, _ or /)
         inputQueue.shift();
         // ^ _ / pressed while the caret sits MID-SLOT inside a locked
@@ -791,7 +846,8 @@
         // the argument. A caret at the slot's END keeps the classic
         // newest-wins wrap (1/2/3 → \frac{\frac{1}{2}}{3}).
         if (script.awaiting && script.locked && script.slot.length
-            && scriptGap() > 0 && scriptGap() < script.slot.length) {
+            && scriptGap() > 0 && scriptGap() < script.slot.length
+            && !hasSlateSelection()) { // a real selection re-points the cursor
             var lockGap = scriptGap(); // cancelScript resets the lock's slot
             cancelScript();
             slotFocus.active = true;
@@ -813,9 +869,26 @@
             pumpInput();
             return;
         }
+        // ^ _ / with a REAL (non-blank) slate selection: the user clicked a
+        // finished block and THEN pressed the trigger — the structure must
+        // wrap the SELECTED block where it stands ("12", click "1", "^"
+        // wraps the 1; startScript's doc.pop() would take the 2).
+        if (hasSlateSelection() && !selectedNodeIsBlank()) {
+            inputBusy = true; // wrapSelectedStructure's async arming resumes the pump
+            wrapSelectedStructure(evt.value);
+            return;
+        }
         if (slotFocus.active && !hasSlateSelection()) { // ^ _ / with a caret inside a structure slot
             inputBusy = true; // arming the fresh argument box resumes the pump
             startStructureAtFocus(evt.value);
+            return;
+        }
+        // ^ _ / with the free caret parked MID-SLATE: the wrap binds the
+        // block left of the caret in place — never the slate's last block
+        // (startScript's doc.pop() grabbed it wherever the cursor sat).
+        if (caret.gap < modelBlocks && !hasSlateSelection()) {
+            inputBusy = true; // arming the fresh argument box resumes the pump
+            startScriptAtCaret(evt.value);
             return;
         }
         inputBusy = true; // startScript's async arming resumes the pump
@@ -856,9 +929,11 @@
         // placeholder of a just-cleared slate): they linger in the DOM
         // until MathJax re-renders and must never be clicked as the box.
         var staleBlanks = blankIds();
+        armSuppress++;
         mje.clear();
         doc.forEach(function (item) { mje.addMath(JSON.stringify(item)); });
         mje.addMath(JSON.stringify(node));
+        armSuppress--;
         modelBlocks = doc.length + 1; // base popped, node pushed: net zero
         script.awaiting = true;
         script.armed = false;
@@ -898,6 +973,123 @@
                 resumeInput();
             });
         }, 300, resumeInput); // arming failed → just continue at top level
+    }
+
+    // Index of the selection among the TOP-LEVEL slate blocks (the preview
+    // rows — one per block, exactly the topItems() order), or -1 when the
+    // marker is unreadable. The core marks BOTH the canvas node and the
+    // preview div carrying the selected id; a nested selection (a
+    // fraction's numerator…) resolves to its containing row, so a
+    // structure wraps what the user pointed at, as one whole.
+    function selectedTopIndex() {
+        var sel = document.querySelector('#mathslate-editor .mathslate-preview .mathslate-selected');
+        if (!sel) { return -1; }
+        var rows = document.querySelectorAll('#mathslate-editor .mathslate-preview > div');
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i] === sel || rows[i].contains(sel)) { return i; }
+        }
+        return -1;
+    }
+
+    // ^ _ / with a real slate selection: wrap the SELECTED block in the
+    // structure in place, then make the fresh argument box the cursor —
+    // the same planted-slot-focus + user-facing shim click as
+    // startStructureAtFocus, so the first fill goes through fillClickedSlot
+    // and re-anchors inside the argument (characters accumulate there).
+    function wrapSelectedStructure(kind) {
+        var job = JOBS[kind];
+        if (!job) { resumeInput(); return; }
+        if (script.awaiting) { cancelScript(); } // mostly already cancelled by the pump
+        var ridx = selectedTopIndex();
+        deselectSlate(); // heal rule: clear selections before clear()s
+        if (ridx < 0) { startScript(kind); return; } // marker unreadable: last-block default
+        var items = topItems();
+        if (ridx >= items.length) { rebuildSlate(items); startScript(kind); return; }
+        // Build EXACTLY the scriptNodeString() slot convention — [base,
+        // mrow{slot content}] — so resolveSlotArr (path [2,1,2]) keeps
+        // finding the argument across the core's re-registration passes.
+        var node = [job.tag, {tex: job.tex}, [items[ridx], ['mrow', {}, ['[]']]]];
+        var slotContent = node[2][1][2];
+        items.splice(ridx, 1, node);
+        clearSlotFocus(); // the wrap owns the cursor now
+        slotFocus.active = true;
+        slotFocus.top = ridx;
+        slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → slot content
+        slotFocus.caretIdx = 0; // empty argument: caret at its start
+        bookmarkSlot(items, slotContent);
+        // Pin the argument box itself (not just any blank in the subtree:
+        // the selected base may hold boxes of its own, e.g. an unfilled
+        // \\frac denominator wrapped into a superscript's base).
+        var si = blankIndexInArray(items, slotContent);
+        var stale = blankIds();
+        rebuildSlate(items); // sets modelBlocks = items.length (net zero)
+        caret.gap = Math.min(ridx + 1, modelBlocks); // park after the wrap
+        refreshCaret();
+        pollUntil(function () {
+            if (!queueQuiet()) { return false; }
+            var id = blankIds()[si];
+            return !!(id && stale.indexOf(id) === -1 && findShim(id));
+        }, function () {
+            var id = blankIds()[si];
+            var shim = id ? findShim(id) : null;
+            if (shim) { shim.click(); } /* user-facing, NOT a programmatic
+                arm: filling passes fillClickedSlot, which plants the durable
+                slot focus INSIDE the argument */
+            // Hold queued keystrokes until the marker lands (else a fast
+            // fill splices into the OUTER slot, the \\sqrt{b^{}2} race).
+            // Bounded at ~2 s: a clear-slate mid-arm leaves queueQuiet()
+            // false for good and would stall the pump ~15 s; the planted
+            // slot focus above already routes queued input correctly.
+            pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
+        }, 40, resumeInput);
+    }
+
+    // ^ _ / with the free caret parked MID-SLATE (no selection, no slot
+    // focus, nothing locked): bind the block LEFT of the caret — the
+    // caret-relative newest-wins — replacing it where it stands and
+    // keeping every block right of the caret in place, instead of
+    // startScript's doc.pop() grabbing the slate's LAST block wherever
+    // the cursor sits (the "12, caret after the 1, ^ wrapped the 2 →
+    // 1{2}^{ }" report). With nothing left of the caret (parked before
+    // the first block) the wrap inserts at the caret with a blank base.
+    // Same planted-slot-focus + user-facing shim arm as
+    // wrapSelectedStructure: the fresh argument box owns the cursor and
+    // fills accumulate inside.
+    function startScriptAtCaret(kind) {
+        var job = JOBS[kind];
+        if (!job) { resumeInput(); return; }
+        if (script.awaiting) { cancelScript(); } // mostly already cancelled by the pump
+        deselectSlate(); // heal rule: clear selections before clear()s
+        var items = topItems();
+        var gap = Math.max(0, Math.min(caret.gap, items.length));
+        if (gap === items.length) { startScript(kind); return; } // end caret: classic newest-wins
+        var base = gap > 0 ? items[gap - 1] : '[]'; // blank base at the slate's start
+        var node = [job.tag, {tex: job.tex}, [base, ['mrow', {}, ['[]']]]];
+        var slotContent = node[2][1][2];
+        items.splice(gap > 0 ? gap - 1 : 0, gap > 0 ? 1 : 0, node); // replace left block, else insert
+        clearSlotFocus(); // the wrap owns the cursor now
+        slotFocus.active = true;
+        slotFocus.top = gap > 0 ? gap - 1 : 0;
+        slotFocus.path = [2, 1, 2]; // [base, mrow{slot}] → slot content
+        slotFocus.caretIdx = 0; // empty argument: caret at its start
+        bookmarkSlot(items, slotContent);
+        var si = blankIndexInArray(items, slotContent);
+        var stale = blankIds();
+        rebuildSlate(items); // sets modelBlocks = items.length
+        caret.gap = slotFocus.top + 1; // park after the wrap
+        refreshCaret();
+        pollUntil(function () {
+            if (!queueQuiet()) { return false; }
+            var id = blankIds()[si];
+            return !!(id && stale.indexOf(id) === -1 && findShim(id));
+        }, function () {
+            var id = blankIds()[si];
+            var shim = id ? findShim(id) : null;
+            if (shim) { shim.click(); } /* user-facing, NOT a programmatic
+                arm: filling passes fillClickedSlot, which plants the durable
+                slot focus INSIDE the argument */
+            pollUntil(hasSlateSelection, resumeInput, 40, resumeInput);
+        }, 40, resumeInput);
     }
 
     // Is the currently selected slate node a fill-box (blank), not content?
@@ -952,11 +1144,19 @@
                 ritems.splice(ridx, 1, json);
                 rebuildSlate(ritems); // sets modelBlocks = items.length
             } else {
-                editor.mje.addMath(json); // marker vanished — plain append
+                // marker vanished — plain append: endAppend keeps the
+                // wrapped addMath's mid-slate caret splice off this
+                // replace-selection heal path
+                endAppend++;
+                try { editor.mje.addMath(json); } finally { endAppend--; }
                 modelBlocks++;
             }
             caretEnd();
-        } else if (!hasSlateSelection() && caret.gap < modelBlocks) {
+        } else if (!hasSlateSelection() && !slotFocus.active && caret.gap < modelBlocks) {
+            // mid-slate FREE-caret splice — only the free caret owns the
+            // gap: while a slot focus lives (a parked script base, a
+            // planted argument) the caret's home is the slot even when
+            // its block sits mid-row, and the fill branches below decide
             var items = topItems();
             items.splice(caret.gap, 0, json);
             rebuildSlate(items); // sets modelBlocks = items.length
@@ -1243,11 +1443,126 @@
         }, 300, function () { /* cosmetic failure is fine */ });
     }
 
+    // Where ← lands when it steps ONTO a script block from the right: the
+    // block's RIGHTMOST script argument as a slot {path, arr} (msup/msub →
+    // the script, msubsup → the superscript), or null when block bi is not
+    // a script block. The typed-lock convention keeps slot content in a
+    // tex-less mrow; a bare argument — an empty '[]' placeholder or a bare
+    // token from a TeX-tab-compiled script — is wrapped into that
+    // convention on the fly: the mrow grouping is invisible to canvas and
+    // TeX while the caret gains its socket, the same wrap fracSiblingSlot
+    // gives a bare fraction numerator. Top-level mrow tex wrappers (whole
+    // TeX-tab inputs) are not descended: their tex-string serialization
+    // owns their content, so they stay whole-block steps.
+    function scriptSlotEntry(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return null; }
+            items[bi] = node; // make the wrap reach the rebuild
+        }
+        if (!Array.isArray(node) || !Array.isArray(node[2])
+            || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) { return null; }
+        var kids = node[2];
+        var ci = kids.length - 1;
+        if (ci < 1) { return null; } // a base alone has nothing to enter
+        var content = kids[ci];
+        if (typeof content === 'string') { // bare token or '[]' → slot convention
+            kids[ci] = ['mrow', {}, [content]];
+            return { path: [2, ci, 2], arr: kids[ci][2] };
+        }
+        if (Array.isArray(content) && content[0] === 'mrow' && Array.isArray(content[2])) {
+            return { path: [2, ci, 2], arr: content[2] };
+        }
+        return null; // a foreign wrapper owns the argument: not a slot
+    }
+
+
+    // Where ← lands when it steps ONTO a fraction block from the right:
+    // the DENOMINATOR's live slot as {path, arr} — the fraction analog of
+    // the script and matrix entries — or null when block bi is not a
+    // top-level mfrac. A bare denominator (a plain token from a hand-built
+    // model, or an element leaf from a normalized TeX-tab compile) is
+    // wrapped into the tex-less mrow slot convention on the fly — the
+    // same wrap fracSiblingSlot gives bare siblings during the walk, so
+    // the climb to the numerator, the release at its start and the →
+    // roundtrip all come from the existing machinery. Typed-lock
+    // fractions never reach here (their locks own the caret); toolbar
+    // ones already carry the convention, so the wrap is a no-op for them.
+    function fracSlotEntry(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return null; }
+            items[bi] = node; // make the wrap reach the rebuild
+        }
+        if (!Array.isArray(node) || node[0] !== 'mfrac' || !Array.isArray(node[2])
+            || node[2].length !== 2) { return null; }
+        var den = node[2][1];
+        if (!(Array.isArray(den) && den[0] === 'mrow' && Array.isArray(den[2])
+            && !(den[1] && den[1].tex))) {
+            node[2][1] = ['mrow', {}, [den]]; // wrap the bare denominator
+        }
+        return { path: [2, 1, 2], arr: node[2][1][2] };
+    }
+
+    // Where the arrow entries land when the free caret steps ONTO a
+    // matrix block: ← from the right enters the BOTTOM-RIGHT cell (the
+    // "\matrix{…} then ← skips the whole block" report), → from the
+    // left the TOP-LEFT cell (the symmetrical right-arrow report) —
+    // each returned as a live slot {path, arr}; the caller parks the
+    // caret at the slot's END for ← and its START for →, the entry
+    // convention the fracSiblingSlot hops already follow, so the
+    // row-major walk they traverse backwards runs forwards unchanged.
+    // The matrix tool nests its mtable inside an mrow that OWNS the
+    // \matrix{…} TeX template, so — unlike scriptSlotEntry's
+    // whole-TeX wrappers — the wrapper chain IS descended: the
+    // template's single slot is the whole table while the cells stay
+    // caret-addressable through their own cell templates, the same
+    // shape the click-fill walk focuses. Only mrows are descended
+    // (bare-group wrappers and the tool's own), so a fraction whose
+    // numerator happens to hold a matrix keeps its whole-block step;
+    // the descent hunts the OUTERMOST mtable, reached cell-first via
+    // mtrCellSlot exactly like fracSiblingSlot's row-major hops — the
+    // walk machinery takes over from there.
+    function matrixSlotEntry(items, bi, fromLeft) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return null; }
+            items[bi] = node; // make the walk reach the rebuild
+        }
+        var found = null;
+        (function findMtableWithPath(n, p) {
+            if (found || !Array.isArray(n) || !Array.isArray(n[2]) || !n[2].length) { return; }
+            if (n[0] === 'mtable') { found = {node: n, path: p}; return; }
+            if (n[0] !== 'mrow') { return; } // only mrow wrappers own matrix templates
+            for (var i = 0; i < n[2].length && !found; i++) {
+                findMtableWithPath(n[2][i], p.concat([2, i]));
+            }
+        })(node, []);
+        if (!found) { return null; }
+        var table = found.node;
+        var ri = fromLeft ? 0 : table[2].length - 1;
+        if (ri < 0) { return null; }
+        var row = table[2][ri];
+        if (!Array.isArray(row) || (row[0] !== 'mtr' && row[0] !== 'mlabeledtr')
+            || !Array.isArray(row[2]) || !row[2].length) { return null; }
+        var ci = fromLeft ? 0 : row[2].length - 1;
+        if (!Array.isArray(row[2][ci])) { return null; }
+        return mtrCellSlot(row[2][ci], found.path.concat([2, ri, 2, ci]));
+    }
+
     // < and > (the UI buttons and ←/→): step the fake caret one position.
     // A real selection collapses to the end first. Inside a locked script
     // block the caret steps between the block's tokens; only a step PAST an
     // edge lets the cursor out — the block never loses it otherwise.
     function moveCaret(dir) {
+        // Snapshot BEFORE scrubSelection eats the marker: while an armed
+        // EMPTY BOX lives (an insert's first-placeholder arm, a Tab
+        // cycle's) the cursor conceptually sits INSIDE that box's
+        // structure — an arrow steps OUT of it with the classic whole-step,
+        // never dives deep into the block's far side (a fresh matrix's
+        // armed first cell + ← releases BEFORE the grid, never jumps to
+        // its bottom-right cell).
+        var armedBox = hasSlateSelection() && selectedNodeIsBlank();
         scrubSelection();
         if (script.awaiting && !script.locked) {
             // The fresh script box is armed (or still arming) but never
@@ -1275,6 +1590,14 @@
             if (!script.slot.length) { exitScript(); return; }
             var j = scriptGap() + dir;
             if (j < 0 || j > script.slot.length) { // stepped past the edge: leave
+                // FRACTION NAVIGATION: ← past the denominator's START climbs
+                // into the numerator's END instead of leaving the fraction.
+                if (j < 0 && script.kind === '/' && jumpToFracNumerator()) { return; }
+                // SCRIPT NAVIGATION: ← past a script's START steps out to
+                // the base's END — parked between base and script (a|^{2}),
+                // never skipping the base to the block's front (|a^{2}) —
+                // the exact mirror of the fraction numerator climb.
+                if (j < 0 && (script.kind === '^' || script.kind === '_') && jumpToScriptBase()) { return; }
                 exitScript();
                 if (j < 0) { // …before the block, if stepping out on the left
                     caret.gap = Math.max(0, modelBlocks - 1);
@@ -1286,8 +1609,191 @@
             refreshCaret();
             return;
         }
+    // ← stepping ONTO a script block (msup/msub/msubsup) from the right
+    // peels INTO its script slot — parked at the slot's END — instead of
+    // skipping the whole block to before its base (the "a^2, →, then ←
+    // jumps to the left of a" report); stepping onto a MATRIX peels into
+    // its bottom-right cell, and onto a FRACTION into its denominator,
+    // the same way (the "← skips the whole matrix" and the TeX-tab
+    // fraction navigation reports). The slot-focus machinery takes
+    // over from there: more ← walks the slot's tokens, typing lands
+    // inside, at the slot's start a further ← parks between base and
+    // script, and a final ← releases the caret to before the block
+    // through the usual peel. → over a script block is the mirror: it
+    // parks between the base and the script (the base IS the block's
+    // first run of content) instead of skipping the structure whole.
+        if (dir < 0 && !armedBox && caret.gap > 0 && caret.gap <= modelBlocks) {
+            var entryItems = topItems();
+            // …or a MATRIX enters its bottom-right cell (parked at the
+            // cell's end), never skipping the grid whole.
+            var entry = scriptSlotEntry(entryItems, caret.gap - 1)
+                || matrixSlotEntry(entryItems, caret.gap - 1)
+                || fracSlotEntry(entryItems, caret.gap - 1);
+            if (entry) {
+                slotFocus.active = true;
+                slotFocus.top = caret.gap - 1;
+                slotFocus.path = entry.path;
+                slotFocus.caretIdx = slotTokenIndices(entry.arr).length; // the slot's END
+                ensureSlotBox(entry.arr); // the typing socket / caret home
+                bookmarkSlot(entryItems, entry.arr);
+                rebuildSlate(entryItems);
+                refreshCaret();
+                return;
+            }
+        }
+        // → stepping ONTO a script block from the left parks the caret
+        // between the base and the script — the base's END as a slot
+        // focus, exactly the park ← reaches by walking through the script
+        // slot (the "asymmetrical right arrow" report: it used to skip
+        // the structure whole). Typing there extends the base, ← walks
+        // back out through the base, and the next → roundtrips into the
+        // script slot's start through fracSiblingSlot's base⇄script
+        // chain — the same positions the ← walk visits, in reverse. →
+        // stepping onto a MATRIX is the same peel: it enters the
+        // TOP-LEFT cell parked at the cell's START — the exact mirror
+        // of the ← entry into the bottom-right cell's end (the
+        // "symmetrical right arrow into matrix" report) — so the
+        // row-major cell walk ← traverses backwards here runs forwards
+        // cell by cell until the caret releases after the grid, never
+        // skipping the matrix whole.
+        if (dir > 0 && !armedBox && caret.gap < modelBlocks) {
+            var itemsR = topItems();
+            if (parkAtScriptBase(itemsR, caret.gap)) { return; }
+            var entryR = matrixSlotEntry(itemsR, caret.gap, true);
+            if (entryR) {
+                slotFocus.active = true;
+                slotFocus.top = caret.gap;
+                slotFocus.path = entryR.path;
+                slotFocus.caretIdx = 0; // the cell's START (the ← entry parks at its END)
+                ensureSlotBox(entryR.arr);
+                bookmarkSlot(itemsR, entryR.arr);
+                rebuildSlate(itemsR);
+                refreshCaret();
+                return;
+            }
+        }
         caret.gap = Math.max(0, Math.min(caret.gap + dir, modelBlocks));
         refreshCaret();
+    }
+
+    /* Tab / Shift+Tab — cycle the cursor through the slate's EMPTY boxes
+     * (placeholder arguments and the slots' own trailing boxes) in the
+     * preview's pre-order — i.e. document order — wrapping around at both
+     * ends. The reference is the box the cursor already owns (an armed
+     * selection or the focused slot's socket); from a free caret the
+     * nearest box after/before its block is taken. The arm is a
+     * user-facing shim click, so filling the box plants the durable slot
+     * focus exactly as if it had been clicked by hand.
+     */
+    function cycleBlank(dir) {
+        // All box/caret bookkeeping is DOM- or model-derived: only read it
+        // once the render queue has drained, or an in-flight rekey hands us
+        // a half-updated box list (the "second Tab does nothing" report).
+        pollUntil(queueQuiet, function () {
+            var total = blankIds().length;
+            if (!total) {
+                status('No empty placeholder boxes to move to.');
+                resumeInput();
+                return;
+            }
+            var ref = -1;
+            if (hasSlateSelection() && selectedNodeIsBlank()) {
+                ref = macroSlotIndex(); // the armed box is the reference
+            } else if (slotFocus.active && slotFocus.boxIdx >= 0) {
+                ref = slotFocus.boxIdx; // the focused slot's socket box
+            }
+            if (script.awaiting) { cancelScript(); } // Tab leaves a lock/arm
+            if (ref >= 0 && total === 1) { resumeInput(); return; } // its only box already has the cursor
+            deselectSlate(); // heal rule: clear selections before clear()s
+            // The trailing box dies with the focus: strip the LEFT slot's
+            // socket before indexing, then adjust every index derived from
+            // the pre-strip list (the stripped position shifts everything
+            // after it down by one).
+            var stripped = -1;
+            if (slotFocus.active) {
+                var oldItems = topItems();
+                var oldArr = resolveSlotArr(oldItems);
+                if (oldArr && oldArr.length > 1 && isBlankNode(oldArr[oldArr.length - 1])) {
+                    stripped = slotFocus.boxIdx;
+                    stripSlotAnchorBox(oldArr);
+                    rebuildSlate(oldItems);
+                }
+                clearSlotFocus();
+            }
+            if (stripped >= 0) { total--; }
+            if (total <= 0) { resumeInput(); return; } // the socket was the only box
+            var target = -1;
+            if (ref >= 0) {
+                if (ref === stripped) { // the reference vanished with the strip
+                    target = (dir > 0 ? stripped : stripped - 1 + total) % total;
+                } else {
+                    var adjRef = (stripped >= 0 && stripped < ref) ? ref - 1 : ref;
+                    target = (adjRef + dir + total) % total;
+                }
+            } else {
+                target = blankNearCaret(dir);
+            }
+            if (target < 0 || target >= total) { resumeInput(); return; }
+            // Arm the target by clicking its user-facing shim — then VERIFY
+            // the marker actually moved there. The deselect above queues a
+            // re-render whose shim-overlay rebuild can still be pending at
+            // click time: a detached shim eats the click silently, and the
+            // pre-existing selection marker then satisfies a plain
+            // hasSlateSelection poll — the cycle would look done while
+            // nothing moved (the intermittent "Tab does nothing" flake).
+            var armAttempts = 0;
+            var armDone = function () {
+                return hasSlateSelection() && selectedNodeIsBlank()
+                    && macroSlotIndex() === target;
+            };
+            var tryArmTarget = function () {
+                if (armAttempts++ >= 6) { resumeInput(); return; }
+                pollUntil(function () {
+                    if (!queueQuiet()) { return false; }
+                    if (armDone()) { return true; }
+                    var ids = blankIds();
+                    return ids.length === total && !!findShim(ids[target]);
+                }, function () {
+                    if (armDone()) { resumeInput(); return; }
+                    var ids = blankIds();
+                    var shim = findShim(ids[target]);
+                    if (shim) { shim.click(); } // user-facing: not a programmatic arm
+                    pollUntil(function () {
+                        return queueQuiet() && armDone();
+                    }, resumeInput, 20, tryArmTarget); // settle, else re-click
+                }, 40, resumeInput);
+            };
+            tryArmTarget();
+        }, 40, resumeInput);
+    }
+
+    // First/last empty box after/before the top-level caret, in blankIds()
+    // (pre-order) index space, wrapping around both ends. -1 when the JSON
+    // shows none (e.g. only the empty slate's decoy box, which topItems()
+    // filters out — there is nothing meaningful to jump to then anyway).
+    function blankNearCaret(dir) {
+        var items = topItems();
+        var gap = Math.min(Math.max(caret.gap, 0), items.length);
+        var seen = 0, firstGlobal = -1, lastGlobal = -1, nextAt = -1, prev = -1;
+        for (var bi = 0; bi < items.length; bi++) {
+            var node = items[bi];
+            if (typeof node === 'string') {
+                try { node = JSON.parse(node); } catch (e) { node = null; }
+            }
+            var first = -1, last = -1;
+            (function scan(n) {
+                if (n === '[]') { if (first === -1) { first = seen; } last = seen; seen++; return; }
+                if (Array.isArray(n) && Array.isArray(n[2])) { n[2].forEach(scan); }
+            })(node);
+            if (first !== -1) {
+                if (firstGlobal === -1) { firstGlobal = first; }
+                lastGlobal = last;
+                if (bi >= gap && nextAt === -1) { nextAt = first; }
+                if (bi < gap) { prev = last; }
+            }
+        }
+        if (dir > 0) { return nextAt !== -1 ? nextAt : firstGlobal; }
+        return prev !== -1 ? prev : lastGlobal;
     }
 
     /* ---------------- TeX-command macro mode (the backslash key) ---------
@@ -1762,7 +2268,10 @@
         if (!arr) {
             rebuildSlate(items); // re-register before anything else reads the fresh model
             clearSlotFocus();
-            editor.mje.addMath(json); // slot vanished: plain end-append
+            // slot vanished — plain end-append: endAppend keeps the
+            // wrapped addMath's mid-slate caret splice off this heal path
+            endAppend++;
+            try { editor.mje.addMath(json); } finally { endAppend--; }
             modelBlocks++;
             caretEnd();
             return;
@@ -1864,8 +2373,40 @@
     // exit). Returns {path, arr, before} where before counts the parent
     // slot's tokens left of that structure; null when the focused slot
     // hangs directly off its top-level block (path [2, n, 2]).
+    // A slot path can end in WRAPPER levels: findBlank (and every
+    // re-registration) wraps a slot's blank one single-child,
+    // attribute-less mrow deeper, and a box fill plants the focus inside
+    // that innermost wrapper — so the raw path reads […, 2, k, 2, 0, 2, …]
+    // where k only LOOKS like the structure's slot index. Navigation must
+    // reason about the LOGICAL slot (the structure's own child), so trim
+    // trailing [0, 2] pairs — but only while the addressed node really is
+    // a lone tex-less mrow wrapper: a real [2, 0, 2] end (an mfrac's
+    // numerator at child 0) must never be eaten.
+    function unwrapSlotPath(items, P) {
+        if (!P) { return P; }
+        var node = items[slotFocus.top];
+        if (typeof node === 'string') { node = JSON.parse(node); }
+        function resolve(path) {
+            var n = node;
+            for (var s = 0; s < path.length; s++) {
+                if (!Array.isArray(n)) { return null; }
+                n = n[path[s]];
+            }
+            return n;
+        }
+        while (P.length >= 5 && P[P.length - 2] === 0 && P[P.length - 1] === 2) {
+            var parentArr = resolve(P.slice(0, P.length - 2));
+            if (!Array.isArray(parentArr) || parentArr.length !== 1) { break; }
+            var wrap = parentArr[0];
+            if (!Array.isArray(wrap) || wrap[0] !== 'mrow'
+                || (wrap[1] && wrap[1].tex)) { break; }
+            P = P.slice(0, P.length - 2);
+        }
+        return P;
+    }
+
     function parentSlotOf(items, navArr) {
-        var P = slotFocus.path;
+        var P = unwrapSlotPath(items, slotFocus.path);
         if (!P || P.length < 4) { return null; }
         var i = P[P.length - 4], k = P[P.length - 2];
         if (P[P.length - 3] !== 2 || P[P.length - 1] !== 2) { return null; }
@@ -1873,6 +2414,22 @@
         if (typeof node === 'string') { node = JSON.parse(node); }
         if (!Array.isArray(node)) { return null; }
         var PP = P.slice(0, P.length - 4);
+        // The candidate parent slot is the children array of the element
+        // found at PP minus its last entry. A peel is only legal when that
+        // element owns CONTENT (an mrow's grouping, an msqrt's radicand,
+        // an mtd's cell); an mtable/mtr's children are row/cell STRUCTURE,
+        // never a caret target — parking the caret there pushed a box
+        // into the rows of a matrix, which MathJax renders as a phantom
+        // extra row (the "□ row appears on ← out of a cell" report).
+        // Refuse: the caller then releases the caret to the slate beside
+        // the whole grid.
+        var owner = node;
+        for (var s2 = 0; s2 < PP.length - 1; s2++) {
+            owner = owner[PP[s2]];
+            if (!Array.isArray(owner)) { owner = null; break; }
+        }
+        if (owner && (owner[0] === 'mtable' || owner[0] === 'mtr'
+            || owner[0] === 'mlabeledtr')) { return null; }
         for (var s = 0; s < PP.length; s++) {
             node = node[PP[s]];
             if (!Array.isArray(node)) { return null; }
@@ -1880,12 +2437,212 @@
         var structure = node[i];
         if (!Array.isArray(structure) || !Array.isArray(structure[2])) { return null; }
         var wrap = structure[2][k];
-        if (!Array.isArray(wrap) || wrap[2] !== navArr) { return null; }
+        // the focused content sits inside structure[2][k] — directly, or
+        // under wrapper mrows (unwrapSlotPath only trims the common case)
+        if (!Array.isArray(wrap) || !pathOfArray(wrap, navArr, [])) { return null; }
         var before = 0;
         for (var t = 0; t < i && t < node.length; t++) {
             if (!isBlankNode(node[t])) { before++; }
         }
         return {path: PP, arr: node, before: before};
+    }
+
+    // Intra-STRUCTURE navigation: the focused slot's SIBLING slot in the
+    // same mfrac (numerator ↔ denominator) or mtable (the next cell in
+    // row-major order), or null when the press points past the structure's
+    // own outer edge. The slot's path locates it positionally — a slot
+    // path always ends […, 2, k, 2]: the structure node, its children
+    // array, the slot's mrow at index k, then the content array (the same
+    // discipline parentSlotOf uses). A bare-token sibling (the / trigger
+    // leaves the numerator as the plain base snippet) is WRAPPED into the
+    // slot convention on the fly: mrow grouping renders invisibly, so the
+    // TeX and the canvas stay identical while the caret gains a socket to
+    // anchor to. Matrix cells need no wrap: an mtd's children are already
+    // a content array.
+    function fracSiblingSlot(items, navArr, dir) {
+        var P = unwrapSlotPath(items, slotFocus.path);
+        if (!P || P.length < 3) { return null; }
+        var k = P[P.length - 2];
+        if (P[P.length - 3] !== 2 || P[P.length - 1] !== 2) { return null; }
+        var structure = items[slotFocus.top];
+        if (typeof structure === 'string') { structure = JSON.parse(structure); }
+        var PP = P.slice(0, P.length - 3);
+        for (var s = 0; s < PP.length; s++) {
+            if (!Array.isArray(structure)) { return null; }
+            structure = structure[PP[s]];
+        }
+        if (!Array.isArray(structure) || !Array.isArray(structure[2])) { return null; }
+        var wrap = structure[2][k];
+        if (!Array.isArray(wrap) || !pathOfArray(wrap, navArr, [])) { return null; }
+        if (structure[0] === 'mfrac') {
+            var j = k + dir;
+            if (j < 0 || j >= structure[2].length) { return null; } // the fraction's outer edge
+            if (!(Array.isArray(structure[2][j]) && structure[2][j][0] === 'mrow'
+                && Array.isArray(structure[2][j][2]))) {
+                structure[2][j] = ['mrow', {}, [structure[2][j]]]; // wrap the bare base
+            }
+            return {path: PP.concat([2, j, 2]), arr: structure[2][j][2]};
+        }
+        if (structure[0] === 'msup' || structure[0] === 'msub' || structure[0] === 'msubsup') {
+            // SCRIPT blocks: the base and the script argument(s) are
+            // content-child siblings. ← from a script's START steps out to
+            // the PREVIOUS content child's END — for the first script that
+            // is the base, parking the caret between base and script
+            // (a^{|2} ← → a|^{2}, the "left arrow skips the base" report);
+            // → from a content child's END enters the NEXT content child's
+            // START — the same roundtrip the fraction's numerator ↔
+            // denominator hop makes (a|^{2} → → a^{|2}). msubsup chains all
+            // three: base ⇄ sub ⇄ sup. Past the base or past the last
+            // script → null: the block's edges belong to the peel/release.
+            var jj = k + dir;
+            if (jj < 0 || jj >= structure[2].length) { return null; }
+            var sib = structure[2][jj];
+            if (!(Array.isArray(sib) && sib[0] === 'mrow' && Array.isArray(sib[2]))) {
+                structure[2][jj] = ['mrow', {}, [sib]]; // wrap the bare base
+            }
+            return {path: PP.concat([2, jj, 2]), arr: structure[2][jj][2]};
+        }
+        if (structure[0] === 'mtr' || structure[0] === 'mlabeledtr') {
+            // MATRIX cells: the same-row neighbour, else the row above's
+            // LAST cell (for ←) / the row below's FIRST cell (for →) —
+            // one continuous row-major walk, mirroring the Tab cycle.
+            // Past the grid's own edge → null: the peel is refused for
+            // table contexts (parentSlotOf's owner guard) and the caret
+            // exits the whole matrix at slate level.
+            var jj = k + dir;
+            if (jj >= 0 && jj < structure[2].length) {
+                return mtrCellSlot(structure[2][jj], PP.concat([2, jj]));
+            }
+            var table = items[slotFocus.top];
+            if (typeof table === 'string') { table = JSON.parse(table); }
+            var tp = PP.slice(0, PP.length - 2); // the mtr path minus [2, r]
+            for (var s2 = 0; s2 < tp.length; s2++) {
+                if (!Array.isArray(table)) { return null; }
+                table = table[tp[s2]];
+            }
+            if (!Array.isArray(table) || table[0] !== 'mtable'
+                || !Array.isArray(table[2])) { return null; }
+            var rr = PP[PP.length - 1] + dir;
+            if (rr < 0 || rr >= table[2].length) { return null; } // the grid's outer edge
+            var trow = table[2][rr];
+            if (!Array.isArray(trow) || !Array.isArray(trow[2]) || !trow[2].length) { return null; }
+            var jc = dir === 1 ? 0 : trow[2].length - 1;
+            if (!Array.isArray(trow[2][jc])) { return null; }
+            return mtrCellSlot(trow[2][jc], tp.concat([2, rr, 2, jc]));
+        }
+        return null;
+    }
+
+    // A matrix cell's LIVE slot. The mtd's own child list is the
+    // templated element's slot-0 — the TeX serializer reads ONLY that
+    // child there — so continuation content must live one group deeper,
+    // inside the tex-less mrow the cell template wraps it in (the same
+    // discipline the fraction's slot mrows follow, and why '\frac{29}'
+    // keeps serializing). Descend that single-child, tex-less mrow
+    // chain to the array fills and the caret actually belong in; the
+    // returned path mirrors the descent.
+    function mtrCellSlot(mtd, basePath) {
+        var el = mtd, p = basePath;
+        while (Array.isArray(el[2]) && el[2].length === 1
+            && Array.isArray(el[2][0]) && el[2][0][0] === 'mrow'
+            && !(el[2][0][1] && el[2][0][1].tex)) {
+            p = p.concat([2, 0]);
+            el = el[2][0];
+        }
+        if (!Array.isArray(el) || !Array.isArray(el[2])) { return null; }
+        return {path: p.concat([2]), arr: el[2]};
+    }
+
+    // ← past the start of a LOCKED fraction's denominator (moveCaret's
+    // edge case): convert the lock into a slot focus parked at the
+    // numerator's END — the same jump fracSiblingSlot performs for a
+    // click-focused slot. Returns false when the locked block is not a
+    // top-level fraction after all; the caller then exits classically.
+    function jumpToFracNumerator() {
+        var itemsF = topItems();
+        var node = itemsF[itemsF.length - 1]; // a locked block is the last one
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return false; }
+            itemsF[itemsF.length - 1] = node;
+        }
+        if (!Array.isArray(node) || node[0] !== 'mfrac' || !Array.isArray(node[2])) {
+            return false;
+        }
+        cancelScript(); // the slot focus takes over from the lock
+        if (!(Array.isArray(node[2][0]) && node[2][0][0] === 'mrow'
+            && Array.isArray(node[2][0][2]))) {
+            node[2][0] = ['mrow', {}, [node[2][0]]]; // wrap the bare base
+        }
+        var numArr = node[2][0][2];
+        slotFocus.active = true;
+        slotFocus.top = itemsF.length - 1;
+        slotFocus.path = [2, 0, 2];
+        slotFocus.caretIdx = slotTokenIndices(numArr).length; // the numerator's END
+        bookmarkSlot(itemsF, numArr);
+        rebuildSlate(itemsF); // re-register the model
+        refreshCaret();
+        return true;
+    }
+
+    // ← past the start of a LOCKED script's slot (moveCaret's j < 0 edge
+    // for ^ and _): park the caret between the base and the script — the
+    // base's END as a slot focus — instead of letting exitScript drop it
+    // at the block's front (the "left arrow inside superscript skips the
+    // base character" report). Same hand-off shape as the fraction's
+    // numerator jump, and the same park the free caret's → uses when it
+    // steps ONTO a script block from the left (parkAtScriptBase below).
+    function jumpToScriptBase() {
+        var itemsB = topItems();
+        var node = itemsB[itemsB.length - 1]; // a locked block is the last one
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return false; }
+        }
+        if (!Array.isArray(node) || !Array.isArray(node[2])
+            || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) {
+            return false;
+        }
+        cancelScript(); // the slot focus takes over from the lock
+        return parkAtScriptBase(itemsB, itemsB.length - 1);
+    }
+
+    // The park both script arrow entries share: block bi must be an
+    // msup/msub/msubsup, then the base — a bare base wrapped into the
+    // tex-less mrow slot convention (invisible to canvas and TeX, the
+    // caret gains its socket) — becomes a slot focus parked at its END
+    // (a|^{2}). Typing there extends the base (a|^{2} then x →
+    // {ax}^{2}); → roundtrips into the script slot's start through
+    // fracSiblingSlot's base⇄script chain; ← walks the base and one
+    // final ← at its start peels before the block through the usual
+    // release. Reached from jumpToScriptBase (locked-script ← edge) and
+    // from moveCaret's free-caret → entry.
+    function parkAtScriptBase(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return false; }
+            items[bi] = node; // make the wrap reach the rebuild
+        }
+        if (!Array.isArray(node) || !Array.isArray(node[2])
+            || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) {
+            return false;
+        }
+        if (!(Array.isArray(node[2][0]) && node[2][0][0] === 'mrow'
+            && Array.isArray(node[2][0][2]))) {
+            node[2][0] = ['mrow', {}, [node[2][0]]]; // wrap the bare base
+        }
+        var baseArr = node[2][0][2];
+        if (!slotTokenIndices(baseArr).length) { return false; } // a blank
+        // base has no edge to park behind: its box is reached by click/Tab
+        ensureSlotBox(baseArr); // the parked caret's socket
+        slotFocus.active = true;
+        slotFocus.top = bi;
+        slotFocus.path = [2, 0, 2];
+        slotFocus.caretIdx = slotTokenIndices(baseArr).length; // the base's END
+        bookmarkSlot(items, baseArr);
+        rebuildSlate(items); // re-register the model
+        caret.gap = bi + 1; // the focus sits after the block as a unit, so a
+        // fill falls through insertChar's mid-slate gap check into the slot
+        refreshCaret();
+        return true;
     }
 
     // ^ _ / while the slot focus lives: wrap the slot's LAST token into
@@ -2134,7 +2891,9 @@
     // exactly as if the tool had been dragged in and clicked.
     function insertStructure(job, gen) {
         var staleBlanks = blankIds();
+        armSuppress++;
         editor.mje.addMath(JSON.stringify(job.json));
+        armSuppress--;
         modelBlocks++;
         pollUntil(function () {
             if (macroState.gen !== gen) { return true; } // slate wiped meanwhile
@@ -2184,6 +2943,61 @@
     var mjeAddCount = 0;
     var appRebuild = 0;
 
+    // Insertion paths that arm their OWN cursor box (the script lock's
+    // argument, the ARG_MACROS conversion) must not trigger the generic
+    // first-placeholder arm — each wraps its writes in this counter.
+    var armSuppress = 0;
+    // Set around insertChar's explicit plain-END-appends (the
+    // replace-selection marker-vanished and slot-vanished heal paths):
+    // tells the wrapped addMath not to divert them into its mid-slate
+    // caret splice — they documented "append at the end" long before the
+    // splice existed.
+    var endAppend = 0;
+
+    // FEATURE: inserting a structure whose JSON carries blank placeholders
+    // (a toolbox structure, clicked or — via the documented drop:hit hook —
+    // dragged in, or a converted TeX-tab structure) focuses the FIRST
+    // empty box as the cursor instead of parking at the block's end: the
+    // fill order of a multi-placeholder structure becomes left-to-right,
+    // and the Tab key (cycleBlank) takes it from there. Mirrors
+    // insertStructure's arm: fresh-blank ids prove the render; the arm is
+    // programmatic, so the fill release keeps the established semantics.
+    function armBoxAfterInsert(json) {
+        if (armSuppress || appRebuild || macroCapture) { return; }
+        if (!editor || !editor.mje) { return; }
+        if (macroState.active || script.awaiting) { return; } // own arms win
+        if (typeof json !== 'string' || json.indexOf('"[]"') === -1) { return; }
+        if (inputBusy || inputQueue.length) { return; } // a live flow owns the cursor
+        var staleBlanks = blankIds(); // preview DOM still pre-insert here
+        inputBusy = true; // the arm window holds the pump, then resumes it
+        pollUntil(function () {
+            if (!queueQuiet()) { return false; }
+            var ids = blankIds().filter(function (id) {
+                return staleBlanks.indexOf(id) === -1 && findShim(id);
+            });
+            return ids.length > 0;
+        }, function () {
+            var ids = blankIds().filter(function (id) {
+                return staleBlanks.indexOf(id) === -1 && findShim(id);
+            });
+            var shim = ids.length ? findShim(ids[0]) : null;
+            if (shim) {
+                armProgrammatic++;
+                programmaticArmIdx = blankIds().indexOf(ids[0]);
+                // NO deselect here: its canvas click would schedule a
+                // re-render, rebuilding the shim overlay and detaching the
+                // very node the next click targets.
+                shim.click(); // select the FIRST empty box as the cursor
+                pollUntil(hasSlateSelection, function () {
+                    armProgrammatic--;
+                    resumeInput();
+                }, 40, function () { armProgrammatic--; resumeInput(); });
+            } else {
+                resumeInput();
+            }
+        }, 40, resumeInput); // no fresh box ever rendered → just continue
+    }
+
     // In-slot macro conversion: parseTeXNodeInSlot sets {name} before
     // driving the TeX tool; the tool's resulting addMath call is then
     // intercepted and spliced into the slot in place of the macro box,
@@ -2191,11 +3005,300 @@
     // conversion detection in parseTeXNodeInSlot works unchanged.
     var macroCapture = null;
 
+    /* ---------------- MATRIX TOOL: n×m dimensions ---------------- *
+     * The config ships ONE static 2×2 mtable template as the matrix
+     * tool. Clicking it (or dropping it on the canvas — both route
+     * through mje.addMath) first opens a small size dialog; the
+     * confirmed rows×columns rebuild the template's own three cell
+     * prototypes (the plain first cell, the '&'-prefixed cells, the
+     * \\-prefixed row openers), so any 1×1…10×10 grid inserts with
+     * exactly the config's markup and TeX shape. The choice is
+     * remembered: the documented drop:hit hook (__mathslateDropJSON in
+     * mathjaxeditor.js) substitutes it on workspace drags, which
+     * cannot pause for a dialog mid-gesture. */
+    var matrixDims = {rows: 2, cols: 2}; // last chosen size
+    var matrixWrap = '';                 // last chosen wrapper ('' = bare \\matrix{})
+    var matrixDirect = 0;                // the dialog's own insert is in flight
+    var matrixPending = null;            // template JSON while the dialog is open
+
+    // Wrapper variants: bare \\matrix{…} (the legacy tool) or an
+    // amsmath ENVIRONMENT — \\bmatrix-style plain macros exist in
+    // neither MathJax 4 nor modern amsmath, but
+    // \\begin{…matrix}/\\end{…matrix} parse everywhere (verified
+    // against the vendored MathJax). The delimiters are canvas-visible
+    // mo elements with an EMPTY tex override, so the environment owns
+    // the brackets in the TeX output exactly once.
+    var MATRIX_WRAPS = {
+        p: {env: 'pmatrix', delims: ['(', ')']},
+        b: {env: 'bmatrix', delims: ['[', ']']},
+        B: {env: 'Bmatrix', delims: ['{', '}']},
+        v: {env: 'vmatrix', delims: ['\u2223', '\u2223']},
+        V: {env: 'Vmatrix', delims: ['\u2225', '\u2225']},
+        // Multi-line / structurally aligned EQUATION environments (the
+        // cases / aligned / array request). cases pieces a piecewise
+        // function together: only the LEFT brace is drawn (the right
+        // side stays bare) and every column is flush-left. aligned
+        // builds systems of equations: columns pair right/left (the
+        // relation column hugs its right neighbour) with no delimiters.
+        // array is the bare custom grid: its TeX carries the {c\u2026}
+        // column spec so the output compiles standalone.
+        cases: {env: 'cases', delims: ['{', null],
+            colAlign: function () { return 'left'; }},
+        aligned: {env: 'aligned', delims: null,
+            colAlign: function (cols) {
+                var a = [];
+                for (var i = 0; i < cols; i++) { a.push(i % 2 ? 'left' : 'right'); }
+                return a.join(' ');
+            }},
+        array: {env: 'array', delims: null,
+            colspec: function (cols) {
+                var spec = '';
+                for (var i = 0; i < cols; i++) { spec += 'c'; }
+                return spec;
+            }}
+    };
+
+    // The matrix tool is recognized by its wrapper's tex SHAPE: the
+    // template emits exactly ["\\matrix{", slot, "}"] — three parts
+    // with a numeric slot index. The TeX tab is NOT matched: typed
+    // "\\matrix{a&b…}" text embeds as ONE string (no slot index), so
+    // that flow is never mistaken for the tool. (A structural compare
+    // against the live config entry would also fail: the toolbox
+    // rewrites its '[]' markers into display boxes at boot.)
+    function isMatrixToolJSON(json) {
+        var node = null;
+        try { node = JSON.parse(json); } catch (e) { return false; }
+        if (!Array.isArray(node) || node[0] !== 'mrow' || !node[1]) { return false; }
+        var tex = node[1].tex;
+        if (!Array.isArray(tex) || tex.length !== 3) { return false; }
+        return tex[0] === '\\matrix{' && tex[1] === 0 && tex[2] === '}'
+            && !!findMtable(node);
+    }
+
+    function findMtable(node) {
+        if (!Array.isArray(node)) { return null; }
+        if (node[0] === 'mtable') { return node; }
+        var kids = node[2];
+        if (Array.isArray(kids)) {
+            for (var i = 0; i < kids.length; i++) {
+                var hit = findMtable(kids[i]);
+                if (hit) { return hit; }
+            }
+        }
+        return null;
+    }
+
+    function texHas(tex, s) {
+        for (var i = 0; tex && i < tex.length; i++) {
+            if (typeof tex[i] === 'string' && tex[i].indexOf(s) !== -1) { return true; }
+        }
+        return false;
+    }
+
+    // Rebuild the tool's JSON at rows×cols by cloning the template's own
+    // three cell prototypes — so attributes, tex pieces and blank markers
+    // stay byte-identical to the config's for every cell of any size.
+    function resizeMatrixJSON(json, rows, cols, wrap) {
+        var root = null;
+        try { root = JSON.parse(json); } catch (e) { return null; }
+        var table = findMtable(root);
+        if (!table || !Array.isArray(table[2])) { return null; }
+        var plain = null, amp = null, head = null;
+        table[2].forEach(function (row) {
+            ((row && row[2]) || []).forEach(function (cell) {
+                if (!Array.isArray(cell) || cell[0] !== 'mtd') { return; }
+                var tex = cell[1] && cell[1].tex;
+                if (!tex) { plain = plain || cell; }
+                else if (texHas(tex, '&')) { amp = amp || cell; }
+                else if (texHas(tex, '\\\\')) { head = head || cell; }
+            });
+        });
+        if (!plain || !amp || !head) { return null; }
+        var rowsOut = [];
+        for (var r = 0; r < rows; r++) {
+            var cells = [JSON.parse(JSON.stringify(r === 0 ? plain : head))];
+            for (var c = 1; c < cols; c++) {
+                cells.push(JSON.parse(JSON.stringify(amp)));
+            }
+            rowsOut.push(['mtr', {}, cells]);
+        }
+        table[2] = rowsOut;
+        // Swap the wrapper: the mrow's tex template carries the amsmath
+        // environment; stretchy mo delimiters make the brackets visible
+        // on the slate but contribute NOTHING to the TeX (their override
+        // is the empty string — the environment owns them).
+        if (wrap && MATRIX_WRAPS[wrap]) {
+            var w = MATRIX_WRAPS[wrap];
+            root[1].tex = ['\\begin{' + w.env + '}'
+                + (w.colspec ? '{' + w.colspec(cols) + '}' : ''), 0, '\\end{' + w.env + '}'];
+            var kids = [];
+            if (w.delims && w.delims[0]) {
+                kids.push(['mo', {tex: ['']}, w.delims[0]]); // slate-only, texless
+            }
+            kids.push(root[2][0]);
+            if (w.delims && w.delims[1]) {
+                kids.push(['mo', {tex: ['']}, w.delims[1]]);
+            }
+            root[2] = [['mrow', {}, kids]];
+            if (w.colAlign) { table[1].columnalign = w.colAlign(cols); }
+        }
+        return JSON.stringify(root);
+    }
+
+    // The size dialog: rows/columns inputs, Insert/Cancel; Enter
+    // confirms, Esc and a backdrop click cancel, Tab is trapped inside.
+    // While it is open (matrixPending set) the slate's key router and
+    // the addMath interception hold off entirely.
+    function matrixEls() {
+        return {backdrop: $('matrix-dialog-backdrop'), rows: $('matrix-rows'),
+                cols: $('matrix-cols'), wrap: $('matrix-wrap'),
+                ok: $('matrix-ok'), cancel: $('matrix-cancel')};
+    }
+
+    function openMatrixDialog(json) {
+        var els = matrixEls();
+        if (!els.backdrop) { return false; }
+        matrixPending = json;
+        els.rows.value = matrixDims.rows;
+        els.cols.value = matrixDims.cols;
+        els.wrap.value = matrixWrap;
+        els.backdrop.hidden = false;
+        els.rows.focus();
+        els.rows.select();
+        return true;
+    }
+
+    function closeMatrixDialog() {
+        var els = matrixEls();
+        if (els.backdrop) { els.backdrop.hidden = true; }
+        matrixPending = null;
+        focusSlate(); // typing belongs on the slate again
+    }
+
+    function confirmMatrix() {
+        var els = matrixEls();
+        var clamp = function (v) {
+            v = parseInt(v, 10);
+            if (isNaN(v)) { v = 2; }
+            return Math.min(10, Math.max(1, v));
+        };
+        var rows = clamp(els.rows.value), cols = clamp(els.cols.value);
+        var wrap = MATRIX_WRAPS[els.wrap.value] ? els.wrap.value : '';
+        var json = matrixPending && resizeMatrixJSON(matrixPending, rows, cols, wrap);
+        matrixDims = {rows: rows, cols: cols};
+        matrixWrap = wrap;
+        closeMatrixDialog();
+        if (!json || !editor || !editor.mje) { return; }
+        matrixDirect++;
+        // The wrapped addMath runs un-intercepted now: the insert counts,
+        // the slate renders and the first cell's box arms as the cursor.
+        try { editor.mje.addMath(json); }
+        finally { matrixDirect--; }
+        status('Inserted a ' + rows + ' × ' + cols
+            + (wrap ? ' ' + MATRIX_WRAPS[wrap].env : ' matrix') + '.');
+    }
+
+    function wireMatrixDialog() {
+        var els = matrixEls();
+        if (!els.backdrop || els.backdrop.__wired) { return; }
+        els.backdrop.__wired = true;
+        els.ok.addEventListener('click', confirmMatrix);
+        els.cancel.addEventListener('click', closeMatrixDialog);
+        els.backdrop.addEventListener('mousedown', function (e) {
+            if (e.target === els.backdrop) { closeMatrixDialog(); } // click-away cancels
+        });
+        els.backdrop.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                confirmMatrix();
+            }
+            else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeMatrixDialog();
+            }
+            else if (e.key === 'Tab') { // trap traversal inside the dialog
+                var order = [els.rows, els.cols, els.wrap, els.ok, els.cancel];
+                var i = order.indexOf(document.activeElement);
+                if (i !== -1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length].focus();
+                }
+            }
+        });
+    }
+
+    // TeX-tool compiles of a LONE fraction arrive as one mrow whose tex
+    // attr is the user's whole input STRING (no slot references): the
+    // template shadows the compiled children in the serializer, so the
+    // fraction stays an inert atom — no slot can be focused, walked, or
+    // hop-climbed (the "fraction navigation fails for TeX-tool \\frac"
+    // report). Such a wrapper is promoted to a first-class tool fraction
+    // at insert time: the mfrac becomes the block outright, carrying the
+    // config's own \\frac{0}{1}-shape TeX template, its arguments wrapped
+    // in the tex-less mrow slot convention — emitting the byte-identical
+    // TeX — so arrow entries, sibling climbs, Tab boxes and fills treat
+    // it exactly like a toolbar fraction. Guards: the wrapper's tex must
+    // be ONE \\frac/\\dfrac-shaped string, its ONLY compiled child the
+    // mfrac, and both arguments LEAVES (a bare token, an element holding
+    // a literal string, or an mrow of such) — deeper structures lack
+    // templates deeper down, so normalizing them would corrupt the TeX
+    // output and they stay inert whole-block steps instead.
+    function normalizeCompiledFrac(json) {
+        if (typeof json !== 'string') { return null; }
+        var node = null;
+        try { node = JSON.parse(json); } catch (e) { return null; }
+        if (!Array.isArray(node) || node[0] !== 'mrow' || !node[1]
+            || !Array.isArray(node[1].tex) || node[1].tex.length !== 1
+            || typeof node[1].tex[0] !== 'string'
+            || !/^\\d?frac/.test(node[1].tex[0])
+            || !Array.isArray(node[2]) || node[2].length !== 1) { return null; }
+        var frac = node[2][0];
+        if (!Array.isArray(frac) || frac[0] !== 'mfrac' || !Array.isArray(frac[2])
+            || frac[2].length !== 2) { return null; }
+        function leafish(n) {
+            if (typeof n === 'string') { return true; } // a bare token or the '[]' blank
+            if (Array.isArray(n)) {
+                if (typeof n[2] === 'string') { return true; } // an element leaf
+                if (n[0] === 'mrow' && !(n[1] && n[1].tex) && Array.isArray(n[2])) {
+                    return n[2].every(leafish); // an mrow of leaves
+                }
+            }
+            return false;
+        }
+        if (!leafish(frac[2][0]) || !leafish(frac[2][1])) { return null; }
+        var name = node[1].tex[0].slice(0, 6) === '\\dfrac' ? '\\dfrac' : '\\frac';
+        var args = frac[2].map(function (child) {
+            return (Array.isArray(child) && child[0] === 'mrow'
+                && !(child[1] && child[1].tex) && Array.isArray(child[2]))
+                ? child // already the slot convention
+                : ['mrow', {}, [child]];
+        });
+        var attrs = {};
+        for (var k in (frac[1] || {})) {
+            if (frac[1].hasOwnProperty(k) && k !== 'tex') { attrs[k] = frac[1][k]; }
+        }
+        attrs.tex = [name + '{', 0, '}{', 1, '}'];
+        return JSON.stringify(['mfrac', attrs, args]);
+    }
+
     function wireAddMathCounter() {
         var mje = editor && editor.mje;
         if (!mje || mje.addMath.__counted) { return; }
         var origAdd = mje.addMath;
         var wrapped = function (json) {
+            // The matrix tool asks for its dimensions first — the dialog
+            // owns the eventual insert (confirmMatrix re-enters this
+            // wrapper guarded by matrixDirect). Checked before everything
+            // else: a cancelled dialog must leave no trace, not even the
+            // model-growth counter.
+            if (!appRebuild && !armSuppress && !macroCapture && !matrixDirect
+                && !matrixPending && isMatrixToolJSON(json)) {
+                openMatrixDialog(json);
+                return;
+            }
             if (!appRebuild) { mjeAddCount++; }
             if (macroCapture) {
                 var capName = macroCapture.name;
@@ -2209,10 +3312,54 @@
                 }
                 return; // NOT routed through the core: it belongs in the slot
             }
-            return origAdd.apply(this, arguments);
+            // A tool arriving while the fake caret is parked mid-slate — a
+            // toolbar click, a canvas-background drop, the TeX tab's
+            // compile — used to miss the caret entirely: core addMath
+            // APPENDS at the end of the slate (the "type 13, ←, click the
+            // toolbar 2 → 132" report; 123 was expected). Mirror
+            // insertChar's mid-slate gap splice: parse the tool's node,
+            // splice it in AT the caret, step the caret past it, and arm
+            // its first placeholder exactly like the append path does.
+            // Only the FREE caret owns a gap, so every other cursor owner
+            // keeps its old path: a real selection or armed fill-box (the
+            // core inserts at the selection), a slot focus (its own
+            // machinery), a script lock or arm, the macro box, the matrix
+            // dialog's confirm, an app-internal rebuild burst, or an
+            // explicit end-append (insertChar's heal fallbacks).
+            if (!appRebuild && !armSuppress && !matrixDirect && !matrixPending
+                && !endAppend && !script.awaiting && !script.locked
+                && !macroState.active && !hasSlateSelection() && !slotFocus.active
+                && caret.gap < modelBlocks) {
+                var spliceNode = null;
+                try { spliceNode = JSON.parse(normalizeCompiledFrac(json) || json); }
+                catch (e) { spliceNode = null; }
+                if (spliceNode) {
+                    var spliceItems = topItems(); // clean deep-copied JSON read
+                    spliceItems.splice(caret.gap, 0, spliceNode);
+                    rebuildSlate(spliceItems); // re-register; sets modelBlocks
+                    caret.gap++; // the caret steps past the inserted block
+                    refreshCaret();
+                    armBoxAfterInsert(json); // focus the first empty placeholder
+                    return;
+                }
+            }
+            var result = origAdd.call(this, normalizeCompiledFrac(json) || json);
+            armBoxAfterInsert(json); // focus the first empty placeholder
+            return result;
         };
         wrapped.__counted = true;
         mje.addMath = wrapped;
+        // Toolbox DRAG-DROPS bypass mje.addMath (the core's drop:hit calls
+        // se.insertSnippet directly): the documented core hook lands the
+        // same first-placeholder arm for them.
+        window.__mathslateAfterToolInsert = armBoxAfterInsert;
+        // …and the drop handler's PRE-insert counterpart: workspace
+        // drags of the matrix tool substitute the size last chosen in
+        // the dialog (a drag cannot pause for a prompt mid-gesture).
+        window.__mathslateDropJSON = function (json) {
+            if (!isMatrixToolJSON(json)) { return null; }
+            return resizeMatrixJSON(json, matrixDims.rows, matrixDims.cols, matrixWrap) || null;
+        };
     }
 
     function addsCount() {
@@ -2350,11 +3497,20 @@
     function wireKeyboard() {
         document.addEventListener('keydown', function (e) {
             if (!editor || !editor.mje) { return; }
+            if (matrixPending) { return; } // the matrix size dialog owns the keys
             if (e.ctrlKey || e.metaKey || e.altKey) { return; } // leave shortcuts alone
             if (isFormTarget(e.target)) { return; } // typing in inputs stays there
 
             var mje = editor.mje;
 
+            if (e.key === 'Tab') {
+                // Cycle empty placeholder boxes (Shift+Tab backwards) —
+                // always swallowed: the slate owns the cursor, not the
+                // browser's focus traversal.
+                e.preventDefault();
+                enqueue({type: 'tab', value: e.shiftKey ? -1 : 1});
+                return;
+            }
             if (e.key === 'Backspace') {
                 e.preventDefault();
                 enqueue({type: 'backspace'}); // pump decides macro vs top-level
@@ -2375,9 +3531,15 @@
             if (e.key === 'Enter') {
                 // Enter renders no glyph: it lets the cursor out of a script
                 // block, or closes an open TeX-command box like any other
-                // terminator.
+                // terminator. WHICH lock is live is decided by the PUMP at
+                // dequeue time (a neutral 'release'): keydown-time sniffing
+                // races a fast type-ahead — pressed before the queued '\\'
+                // was even pumped open, Enter would see the stale '/' lock's
+                // script.awaiting and close the wrong thing, leaving the
+                // just-opened macro box running forever (the "\\gamma Enter
+                // does nothing" half of the stuck-placeholder report).
                 e.preventDefault();
-                enqueue(script.awaiting ? {type: 'script-exit'} : {type: 'macro-end'});
+                enqueue({type: 'release'});
                 return;
             }
             // Cursor lock: while the TeX-command box is open, navigation keys
@@ -2400,8 +3562,10 @@
             if (e.key === ' ') {
                 // Space renders nothing in math, but it lets the cursor out
                 // of a script block (or closes an open TeX-command box).
+                // Neutral 'release' like Enter: the pump decides which lock
+                // is live at dequeue time.
                 e.preventDefault();
-                enqueue(script.awaiting ? {type: 'script-exit'} : {type: 'macro-end'});
+                enqueue({type: 'release'});
                 return;
             }
             if (e.key === '\\') { // TeX command placeholder trigger

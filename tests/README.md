@@ -96,14 +96,191 @@ in the TeX read-out with the true calligraphic alphabet (the
 `data-mjx-variant="-tex-calligraphic"` internal variant — what MathJax 4's
 own TeX jax emits for `\mathcal{A}`, distinct from plain `script`) / the
 Fraktur glyph (U+1D504) typeset on the canvas.
-The final step pins the derivative buttons: the total/partial derivative
+Step 67 pins the derivative buttons: the total/partial derivative
 tools must actually SHOW their operator glyphs in the label (two non-empty
 mi's — `d□`/`d□`, `∂□`/`∂□` — visibly distinct from the plain fraction's
 bare boxes; the inherited upstream config wrapped the glyphs in a
 one-element array that toMathML silently dropped) and inserting the
 partial derivative typesets both ∂ glyphs on the slate (U+1D715, exactly
 what MathJax 4 does for a real `\frac{\partial}{\partial}`).
-67 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins selection-aware wrapping: `^` `_` `/` pressed with a
+real slate selection wrap the SELECTED block where it stands — control
+`12` + `^` → `12^{}` (no selection: last block); `12`, select `1`, `^` →
+`1^{}2` with the argument owning the cursor (fill → `1^{34}2`); mid-slate
+`12+3`, select `2`, `_` → `12_{}+3` in place; `12`, select `1`, `/` →
+`\frac{1}{}2` (fill → `\frac{1}{5}2`); and a nested selection (a
+fraction's numerator) wraps its whole top-level block → `{\frac{1}{2}}^{}`,
+the fill landing in the fresh argument box, not the fraction's own boxes.
+Because the control case clears the slate the instant the `^` box's TeX
+appears (mid-arm), it also covers the clear-during-arm ghost fix: typing
+right after a Clear can no longer fall into a stale placeholder selection.
+The final step pins fraction cursor navigation: `←` from the
+denominator's start climbs to the numerator's END (never an early exit),
+repeated `←` walks the numerator left, one final `←` exits the fraction
+to the left, and `→` roundtrips from the numerator's end to the
+denominator's start — verified in the locked `/` state (`a/bc`), after a
+click-focused box fill (where the slot path is buried under the blank
+wrapper mrows the fill leaves behind), and for a structure base (an
+empty `\sqrt{}` numerator stays byte-identical while the caret anchors
+after it).
+The final step pins placeholder-first insertion and Tab navigation: a
+fraction tool click arms the FIRST empty box (the fill lands in the
+numerator), `Tab` moves on to the denominator, `Shift+Tab` wraps
+backwards from the first box to the last, a single-box `Tab` is a no-op
+that leaves typing in the slot, `Tab` with no empty boxes does not
+disturb a script lock, and `Tab`/`Shift+Tab` cycle across a mixed slate
+(fraction boxes ↔ a superscript argument, wrapping around the end).
+The final step pins the n×m matrix tool: the toolbox click opens the
+size dialog (2×2 default) instead of inserting; confirming 3×3 renders
+nine blank cells with the first armed as the cursor and the status line
+announcing the size; `Shift+Tab`/`Tab` wrap around the grid and fills
+land cell by cell in row-major order; `Cancel`, `Escape` and a backdrop
+click all dismiss without inserting (typing resumes immediately); the
+chosen size is remembered (the dialog re-opens on it, `Enter` confirms,
+a 2×1 fills as `\matrix{a\\b}`); out-of-range dimensions clamp to
+1…10; the documented drop hook substitutes the remembered size for
+workspace drags and leaves other tools untouched; a TeX-tab-typed
+`\matrix{x&y\\z&w}` compiles normally without ever opening the
+dialog; and a dialog-chosen 2×2 reproduces the legacy template's TeX
+byte for byte.
+The final step pins the matrix wrapper setting: the dialog's brackets
+selector starts bare with the remembered 2×2; choosing parentheses
+renders `( )` around the slate grid, arms the first cell and fills to
+`\begin{pmatrix}a&b\\c&d\end{pmatrix}` (the status line names the
+wrapper); the choice is remembered, `[ ]`/`{ }`/`| |`/`‖ ‖` each emit
+their amsmath environment with the slate showing matching delimiters;
+the drop hook substitutes size AND wrapper (mo delimiters with empty
+tex overrides, so the environment owns the brackets exactly once); a
+typed `\begin{bmatrix}…\end{bmatrix}` never opens the dialog; and
+switching back to bare restores the legacy `\matrix{…}` output with no
+delimiters on the slate.
+The final step pins the stuck-placeholder fix: typing `1/\gamma` and
+pressing `Enter` converts and arms the fraction's slot socket (one empty
+preview box, one canvas □); `→` out of the denominator sheds both and
+further typing lands cleanly after the fraction; `Escape` from the same
+state sheds it too. Climbing with `←` keeps exactly ONE socket alive
+through the denominator walk and the numerator jump (a fill there lands
+as `\frac{29}{\beta}`), and the final `←` past the numerator's start
+exits with every placeholder gone. A filled denominator
+(`3/\delta` `Enter` then `7`) also keeps exactly one socket while
+typing and sheds it on `→`.
+The final step pins the matrix phantom-row report and the grid's arrow
+navigation: `1` in the first cell, caret before it, then `←` exits
+before the matrix with the canvas keeping exactly two rows (the bug
+pushed the caret's placeholder into the table's row list, rendering a
+third row); `→` walks the cells row-major `1,2,3,4` and out past the
+last cell; `←` from a cell's start crosses to the row above's last
+cell (fill lands as `\matrix{1&29\\3&}`); `←` from the freshly armed
+EMPTY first cell exits with all four placeholders intact; a `pmatrix`
+exits before its parens the same way; a fraction typed inside a cell
+peels back into the cell content on `→` and then hops to the next
+cell; and multi-token typed fills in the `&`/`\\`-templated cells
+serialize whole (`\matrix{4&19\\27&}`).
+The final step pins the norm bracket tool: the `\left\|◻\right\|` label
+renders in the roots-and-brackets tab beside `\left|◻\right|`; clicking
+inserts `\left\|\right\|` with the first box armed, `x` fills to
+`\left\|x\right\|` with two ‖ glyphs typeset on the canvas; `x` `/` `y`
+builds `\left\|\frac{x}{y}\right\|` inside; and the typed TeX
+`\left\|y\right\|` compiles with the same delimiters.
+The final step pins the arrow tools and the inequality set: the
+relations tab's labels read `\to` `\gets` `\mapsto` in a row; each
+click-fills (`a` + tool + `b` → `a\to b` / `a\gets b` / `a\mapsto b`)
+with the matching arrow typeset on the canvas (→ U+2192, ← U+2190,
+↦ U+21A6); the pre-existing `\leq`/`\geq` tools click-fill to
+`a\leq b` / `a\geq b` with ≤/≥ glyphs; and the typed TeX `a \gets b`
+and `a \mapsto b` compile natively with the same arrows.
+The final step pins the script-block arrow-entry report: `a^2`, `→` out,
+then `←` steps INTO the superscript (model untouched, one socket box) and
+`3` fills `a^{23}`; `←`×3 parks at the base's end (`x` grows the base →
+`{ax}^{23}`) and `←`×3 more walks the base and releases before the block
+with the socket shed (`y` → `y{ax}^{23}`); `→` from there parks at the
+base end — mirror of the `←` entry (step 80 pins the full chain) — so
+`q` grows the base (`y{axq}^{23}`) and the next `→` roundtrips into the
+script's start (`w` → `y{axq}^{w23}`); msub enters the same way
+(`b_3` ← `4` → `b_{34}`); an empty argument re-arms as its box
+(`e^{}` ← `f` → `e^f`); and a plain neighbour token still gets a plain
+block-step (`12` ← `x` → `1x2`).
+Step 78 pins the left-arrow-skips-the-base report: `a^2` then
+`←` (`a^{|2}`, still locked) then `←` parks *between* the base and the
+script (`a|^{2}`, model untouched, one socket box) — never at the
+block's front — and `x` grows the base (`{ax}^2`); `→` from the park
+roundtrips into the argument's start (`z` → `{ax}^{z2}`); `b_3` `←` `←`
+parks the same way for subscripts (`4` → `{b4}_3`). (Steps 46, 59 and
+77 exercise the same chain: step 46 walks a locked `d^4` out through
+the base park and back in on `→`; step 59's radical walk now grows the
+base inside `\sqrt{b^2}`; step 77 chains the entered-slot walk onto the
+base's end.)
+Step 79 pins the caret-pathway binding report: with the free caret
+mid-slate, `^`/`_`/`/` bind the block LEFT of the caret in place —
+`12` `←` `^` wraps the 1, never the last block, and fills land inside
+(`34` → `1^{34}2`); each step deeper binds its own left neighbour
+(`123` `←` `_` `x` → `12_x3`, `123` `←` `←` `_` → `1_{}23`); `/`
+fractionates the left block (`y` → `\frac{1}{y}2`); and parked before the
+first block the wrap inserts there with a blank base
+(`12` `←` `←` `^` `x` → `{}^x12`). (The click-selection pathway of the
+same report is item 21, pinned by step 68.)
+The final step pins the symmetrical-right-arrow report: with the free caret
+immediately left of a script block, `→` steps **into** the block — parked
+at the base's end, model untouched, one socket box — instead of skipping
+the structure whole; typing grows the base (`a^2` front `→` `x` →
+`{ax}^2`), the next `→` roundtrips into the argument's start
+(`z` → `{ax}^{z2}`), and stepping through it exits right
+(`w` → `{ax}^{z2}w`); msub parks the same way (`b_3` front `→` `4` →
+`{b4}_3`); a *blank* base keeps the whole-block step
+(`{}^x12` front `→` `y` → `{}^xy12`); a mid-row park keeps fills in the
+slot — the gap is not a cursor while a slot focus lives —
+(`a^2bc` front `→` `q` → `{aq}^2bc`, and continuation typing accumulates:
+`123` `←` `←` `_` `x` `y` → `1_{xy}23`); plain neighbours still get a
+plain step (`12` `←` `→` `x` → `12x`).
+The final step pins the matrix-arrow-skip report: with the caret immediately
+right of a filled 2×2 `\matrix{1&1\\1&1}`, `←` steps INTO the bottom-right
+cell — model untouched, one socket — and the fill lands at the cell's end
+(`2` → `\matrix{1&1\\1&12}`); stepping back out right and re-entering over a
+plain neighbour works the same, and the row-major walk continues backwards
+through every cell until the caret releases before the matrix
+(`y` → `y\matrix{1&1\\1&12}x`); an EMPTY bottom-right cell parks in its box
+like an empty script argument and the fill consumes the blank
+(`\matrix{1&1\\1&}` `←` `2` → `\matrix{1&1\\1&2}`).
+The final step pins the TeX-tab-fraction navigation report: a lone
+`\frac{a}{b}` compiled by the direct-TeX tab used to stay an inert atom
+(its whole-input TeX string shadowed the children, nothing could be
+focused), and is now promoted to a first-class fraction at insert time
+— `←` peels into the denominator's END (`X` → `\frac{a}{bX}`), the
+item-22 climb and roundtrip apply verbatim (`←` at the denominator start
+→ numerator end, `W` → `\frac{aW}{bX}`; `→` back down, `Q` →
+`\frac{aW}{QbX}`), and walking out left releases before the block
+(`V` → `V\frac{aW}{QbX}`); `\dfrac` keeps its name, number leaves and
+empty denominators work (`\frac{a}{}` `←` `X` → `\frac{a}{X}`), nested
+structures stay inert whole-block steps (`\frac{\sqrt{2}}{b}` is
+byte-untouched), and toolbar fractions gain the same `←` denominator
+entry (`1/5`, exit the lock, `←`, `X` → `\frac{1}{5X}`).
+The final step pins the multi-line environments: the matrix dialog's
+bracket select now also offers `cases`, `aligned` and `array` —
+`\begin{cases}a&b\\c&d\end{cases}` fills Tab-wise with the lone left
+brace on the slate and flush-left cells, the `←` entry peels into its
+last cell (`X` → `…&dX\end{cases}`); `\begin{aligned}a&=b\\c&=d
+\end{aligned}` pairs right/left equation columns with no delimiters;
+and `\begin{array}{ccc}…\end{array}` stays centered with the column
+spec in its TeX; the dialog remembers the environment choice too (reset
+to the legacy bare default at the end of the step).
+Step 84 is step 81's exact mirror for the right arrow: left of a
+filled 2×2 `\\matrix{1&1\\\\1&1}` (reached by walking the row-major
+chain all the way out), `→` steps INTO the top-left cell parked at
+its start — one socket, the model untouched — so a fill lands at the
+cell's start (`2` → `\\matrix{21&1\\\\1&1}`); the walk then continues
+forwards through every cell and releases after the grid (`x` →
+`\\matrix{21&1\\\\1&1}x`); an EMPTY top-left cell parks in its box,
+the fill consuming the blank (`\\matrix{&1\\\\1&1}` `→` `2` →
+`\\matrix{2&1\\\\1&1}`).
+Step 85 pins the report's toolbar-click caret splice: `13`, `←` (caret
+between the 1 and the 3), click the toolbar `2` → `123` (never `132`),
+with the caret stepping past the inserted block (`+` → `12+3`, `→` `x`
+→ `12+3x`); a structure tool splices the same way and still arms its
+first placeholder (`13`, `←`, fraction click → `1\\frac{}{}3`, `2` →
+`1\\frac{2}{}3`); and the other cursor owners keep their old paths —
+an armed box takes the click at the selection (`^`, click `2` →
+`{}^2`), a caret at the end still appends (`12`, click `2` → `122`).
+85 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

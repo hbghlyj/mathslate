@@ -21,6 +21,35 @@ exactly like in TeX:
 | `/` | fraction of the preceding token, one token fills the denominator | `a/b` → `\frac{a}{b}`; `1/2/3` → `\frac{\frac{1}{2}}{3}` |
 | `\` | opens an **active TeX-command placeholder** (see below — including *inside* a focused structure slot); on close the name is **compiled by the toolbox TeX tool** into real math | `\alpha2` → `\alpha 2`, `\gamma` → `\gamma` — the slate then shows a real γ glyph |
 
+With a slate block **selected** (clicked), `^`, `_` and `/` wrap the
+*selection* where it stands instead of the last block: `12`, click the
+`1`, `^` gives `1^{}2` and the argument owns the cursor (`34` fills it in
+place). Selecting a *part* of a structure (a fraction's numerator) wraps
+its whole top-level block (`\frac{1}{2}` → `{\frac{1}{2}}^{}`), with the
+fill landing in the fresh argument box — never in the base's own boxes.
+With the **free caret parked mid-slate** (moved there by `←`/`→` or the
+`<`/`>` buttons), the binding operators apply caret-relative newest-wins:
+the block immediately **left of the caret** is wrapped in place and
+everything right of it keeps its spot — `12`, `←`, `^` gives `1^{}2`;
+parked before the first block, the structure inserts at the caret with a
+blank base (`12`, `←`, `←`, `^`, `x` → `{}^x12`). Only at the end of the
+slate does the classic last-block wrap apply.
+Toolbar **clicks**, canvas drops from the toolbox, and the TeX tab's
+compiled input honor the same free caret: the tool is spliced in at the
+caret's gap, the caret stepping past the inserted block — `13`, `←`,
+click the toolbar `2` gives `123` (it used to ignore the caret and
+append: `132`). Structure tools splice the same way and their first
+placeholder still arms as the cursor (`13`, `←`, fraction click →
+`1\frac{}{}3`, then `2` → `1\frac{2}{}3`). Every other cursor owner
+keeps its own path: a real selection or an armed fill-box still takes
+the click at the selection (`^`, click `2` → `{}^2`), script locks,
+slot focuses, the macro box and the matrix dialog are untouched, and
+with the caret at the very end a click still appends (`12`, click `2` →
+`122`).
+Clearing the slate also drops any armed/selected box synchronously, so
+typing immediately after **Clear slate** cannot fall into a ghost
+placeholder and vanish.
+
 Script blocks **keep the cursor**: after the first fill the block stays
 "active" (green lock glow, caret anchored inside as `a^{2|}`) and every
 further character accumulates in the block — exactly the continuous input
@@ -33,7 +62,28 @@ still-empty block (`e^` `→` `x` → `e^{}x`), `←` parks it before the
 block (`e^` `←` `x` → `xe^{}`). `←`/`→` (and the `<`/`>` buttons) step the
 caret **between the block's tokens** while it is locked; `Backspace`
 inside deletes the block's last token and collapses an emptied block back
-to its bare base. The `\` placeholder is a little three-state box of its own:
+to its bare base. Once the caret is out, `←` stepping back onto a script
+block (`msup`/`msub`/`msubsup`) peels **into** its script argument —
+parked after the last script token (`a^2` `→` `←` → `a^{2|}`, so typing
+`3` gives `a^{23}`) — instead of skipping the whole block to before the
+base; further `←` walks the argument, then steps **out onto the base's
+end** — `a^{|2}` `←` parks at `a|^{2}` (between the base and the
+script — typing `x` grows the base: `{ax}^2`), and `→` from there hops
+back into the argument's start, the same roundtrip the fraction's
+numerator ↔ denominator navigation makes (`msubsup` chains all three:
+base ⇄ sub ⇄ sup); after walking the base, one more `←` releases the
+caret before the block. `→` stepping onto a script block from the left
+is the exact mirror: it parks **between the base and the script** — the
+base's end as a slot focus (`|a^2` `→` parks at `a|^2` — typing `x`
+grows the base: `{ax}^2`) — instead of skipping the structure whole, and
+the following `→` hops into the argument's start, so the two arrows
+visit the same positions in opposite order (`|a^2` ⇄ `a|^2` ⇄ `a^{|2}`
+⇄ `a^{2|}` ⇄ `a^2|`). Typed fills always land where the parked caret
+owns the cursor — mid-slate gap splices never steal a keystroke from a
+live slot, even when the block sits mid-row (`a^2bc`, walk to the front,
+`→`, `q` → `{aq}^2bc`). Only a *blank* base keeps the whole-block
+step — its box has no text edge to park behind (reach it by click/Tab).
+The `\` placeholder is a little three-state box of its own:
 
 1. **Activation** — typing `\` inserts a placeholder container showing a
    monospace `\` with the cursor locked inside it: arrow keys (and
@@ -137,6 +187,106 @@ stays inside; only the script-trigger boxes (`^`/`_` at top level) keep
 the classic one-token-per-box release (their own lock machinery owns
 accumulation there).
 
+**Fraction navigation.** Inside a fraction the arrows climb between the
+two slots instead of stepping out early: `←` from the denominator's
+start jumps straight up to the numerator's **end**, and `→` from the
+numerator's end drops back to the denominator's start. Repeated `←`
+then walks the numerator left token by token, and one final `←` past
+its start exits the fraction to the left — while `→` past the
+denominator's end exits to the right. This holds both while a typed `/`
+block is still locked and after clicking into a box of a finished
+fraction — and, exactly like script blocks and matrices, `←` stepping
+**onto** a finished fraction from the slate peels into the denominator
+(parked at its end; fills land there). Fractions compiled from typed
+TeX participate too: a lone `\frac{…}{…}` (or `\dfrac`) typed into the
+TeX tab used to stay an inert atom — its whole-input TeX own string
+shadowed the compiled children, so no slot could ever be focused — and
+is now promoted to a first-class fraction on insertion, emitting the
+byte-identical TeX (`\frac{a}{b}` compiles, `←` enters the denominator,
+`X` → `\frac{a}{bX}`, and the full numerator climb applies). Compiles
+whose arguments nest real structure (`\frac{\sqrt{2}}{b}`) stay inert
+whole-block steps: they have no templates deeper down, so editing them
+could never re-emit correct TeX. Exiting a focused slot — by arrow or by `Esc` — also sheds
+the slot's placeholder socket: no stray empty box is left on the slate
+or the preview canvas once the caret has moved on, and a `Space`/`Enter`
+that closes a TeX-command box can never be mistaken for a script-block
+exit by a fast type-ahead. (A bare base numerator is wrapped in an
+invisible `mrow` so the caret has a socket — TeX and rendering are
+unchanged.)
+
+**Placeholder-first insertion.** Dropping a structure onto the slate
+from the toolbox — by click or by drag — puts the cursor straight into
+the structure's **first** empty placeholder box instead of parking it at
+the block's end, so a `\frac{□}{□}` fills numerator-then-denominator
+without any clicking between. Typed `\frac`-style commands that need
+arguments behave the same way (and always did).
+
+**Bracket tools.** The roots-and-brackets tab's `\left…\right` wrappers —
+`( )`, `[ ]`, `{ }`, `| |` — are joined by the double-bar **norm**
+wrapper `\left\|…\right\|` (‖ on the slate, `\|` in the TeX;
+MathJax 4 typesets the macro natively). It inserts like its siblings:
+first box armed as the cursor, structures like `x/y` build inside, and
+the same delimiters compile from the TeX tab.
+
+**Relation and arrow tools.** The relations tab pairs its `\to` with
+`\gets` (←) and `\mapsto` (↦), side by side in the same row; the
+inequality set `\neq`, `\leq`, `\geq` sits beside `=`, `<`, `>`. Each
+is a one-click token (`a` + button + `b` → `a \gets b`), and every one
+compiles from the TeX tab too.
+
+**Matrix tool, any size.** The toolbox's matrix button asks for its
+dimensions first — any **1×1 to 10×10** grid — and for its **brackets**
+or environment: bare, `( )`, `[ ]`, `{ }`, `| |`, `‖ ‖`, or the
+multi-line environments **`cases`**, **`aligned`** and **`array`**.
+The slate renders the chosen delimiters with the matrix — `cases`
+shows just the left `{` with every column flush-left (piecewise
+functions), `aligned` pairs right/left equation columns with no
+delimiters (systems of equations), `array` stays bare and centered
+with the `{c…}` column spec in its TeX — while the TeX output stays
+canonical amsmath:
+bare grids keep the legacy `\matrix{…}` form and the others emit
+environments (`\begin{pmatrix}…\end{pmatrix}`,
+`\begin{cases}…\end{cases}`, `\begin{aligned}…\end{aligned}`,
+`\begin{array}{cc}…\end{array}` — the `\bmatrix`-style
+plain macros exist in neither MathJax 4 nor modern amsmath). The insert
+then drops the cursor into the first cell, so `Tab` fills the matrix
+cell by cell, row by row (`Shift+Tab` steps back). Size and brackets are
+remembered for the session: the next matrix click defaults to them, and
+*dragging* the tool onto the slate inserts at the remembered setting
+straight away (a drag cannot pause for a prompt mid-gesture). Typing
+`\matrix{a&b\\c&d}` into the TeX tab is
+not affected — it compiles as before. Arrows walk the grid too: `→`
+from a cell's end moves to the next cell and `←` from a cell's start to
+the previous cell's end, continuously in row-major order like `Tab`;
+stepping past the grid's own edges — first cell `←`, last cell `→` —
+releases the caret to the slate beside the whole matrix (it never
+strands a placeholder inside the row structure: an early variant of
+that peel parked the caret's socket in the table's row list, which
+MathJax faithfully rendered as a phantom extra row). `←` stepping back
+onto the matrix from the slate peels **into** its bottom-right cell —
+parked at the cell's end, the model untouched, one socket as the
+caret's home (an empty cell parks in its box and the fill lands,
+consuming the blank) — instead of skipping the grid whole to before
+its left edge, the same entry script blocks make; the row-major walk
+then continues backwards cell by cell from there. `→` stepping onto
+the matrix from the slate is the exact mirror: it peels **into** the
+top-left cell — parked at the cell's *start* (the entry convention
+the walk's own `→` cell hops already follow), the model untouched,
+one socket as the caret's home, an empty cell filling through its
+box — so a fill lands at the cell's start and the walk then
+continues forwards cell by cell until the caret releases after the
+grid. Multi-token cells
+(`19`, `a/b`) serialize in full: each cell wraps its content in an
+invisible `mrow`, so the separators stay the `mtd`s' own `&`/`\\`
+overrides while cell content keeps reading out token by token.
+
+**Tab navigation.** `Tab` moves the cursor to the next empty box in the
+expression — placeholder arguments *and* the slots' own trailing □
+boxes — in document order, wrapping around at the end; `Shift+Tab`
+walks the same cycle backwards (from a free caret it starts at the box
+nearest the caret). With a single empty box it is a no-op, and with none
+it quietly leaves the current lock or caret untouched.
+
 **The blinking caret.** Whenever nothing on the slate is selected and the
 editor has focus, a blinking caret marks the insertion point. It parks at
 the end of the expression by default, and the **`<` / `>` buttons** (next
@@ -210,7 +360,7 @@ The editor core (`js/mathslate/*.js`, `css/styles.css`, `help.html`,
 | File | Change |
 | --- | --- |
 | `js/mathslate/editor.js` | Accepts the tool config as a JS object (`M.tinymce_mathslate.configJSON` from `js/config.js`) in addition to a URL fetched with `Y.io`. Enables `file://` use. Also, toolbox tool *labels* render each blank marker as the same visual box the slate uses (`□`, U+25FB) instead of a literal `[]` pair — brackets are functional math symbols (intervals, matrices), the box is the unified fill-in affordance; the stored tool json keeps the raw marker, so dropping a tool still lands a live blank on the slate (marked `Standalone app (documented patch)`). |
-| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. For the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). And the FIRST canvas render requests inline math instead of `display="block"` (under the app's `displayAlign:'left'` config a display-mode first render left-justified the empty slate's placeholder box at the canvas's bottom-left until the first keystroke re-rendered it centred; marked `Standalone app (documented patch)`). Also, `output('JSON')` cleans the slate by DEEP COPY instead of mutating the live tree: the upstream code deleted ids and swapped blanks for `'[]'` strings on the shared objects, which silently poisoned undo/redo snapshots — a later undo restored the raw markers as literal content (`\frac{1}{[]}` in the buffer, then propagating; marked `Standalone app (documented patch)`). |
+| `js/mathslate/mathjaxeditor.js` | Help button glyph `&#xE47C;` (a Moodle icon-font glyph) replaced with a plain `?`. For the MathJax 4 port: when a snippet is selected while its canvas node has not rendered yet (v4 typesets asynchronously), the selection-highlight code guards the missing node instead of throwing (marked `MathJax 4 port (documented patch)`). And the FIRST canvas render requests inline math instead of `display="block"` (under the app's `displayAlign:'left'` config a display-mode first render left-justified the empty slate's placeholder box at the canvas's bottom-left until the first keystroke re-rendered it centred; marked `Standalone app (documented patch)`). After a toolbox drag-drop insert, the drop handler additionally calls the host app's `window.__mathslateAfterToolInsert` hook so the inserted structure's first placeholder box can be focused as the cursor (no-op when the host does not listen; marked `Standalone app (documented patch)`). The same drop handler first offers the host a `window.__mathslateDropJSON` substitution hook — Mathslate's matrix tool uses it to insert workspace drags at the grid size and brackets last chosen in its dimension dialog, since a drag cannot pause for a prompt mid-gesture (marked `Standalone app (documented patch)`). Also, `output('JSON')` cleans the slate by DEEP COPY instead of mutating the live tree: the upstream code deleted ids and swapped blanks for `'[]'` strings on the shared objects, which silently poisoned undo/redo snapshots — a later undo restored the raw markers as literal content (`\frac{1}{[]}` in the buffer, then propagating; marked `Standalone app (documented patch)`). The drop-shim wiring skips an id the freshly rebuilt preview no longer has instead of failing the whole render-queue task — the shim is built from `se.preview()` (every id'd descendant) while the preview div is `se.preview('tex')`, which emits only the referenced child for a templated element whose child list grew (marked `MathJax 4 port (documented patch)`). |
 | `js/mathslate/textool.js` | The TeX tool's input no longer takes DOM focus at construction: the standalone app wants the *workspace* focused at launch, so the first keystrokes land on the slate (marked `Standalone app (documented patch)`). |
 | `js/mathslate/snippeteditor.js` | The `output()`/`preview()` serializers never emit a bare `'[]'` element: inside a snippet tree that string is only ever the internal blank marker, so it must stay a render-level box and can never leak into the TeX text (marked `Standalone app (documented patch)`). |
 | `plugin.js` / `mathslate.html` / `yui/build/*dialogue*` | **Dropped.** The TinyMCE plugin wrapper and Moodle dialogue module are replaced by `js/app.js`, which owns the "document" and the Insert/Copy/Clear actions that used to live on TinyMCE's dialogue buttons. |
