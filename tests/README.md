@@ -191,12 +191,24 @@ with the matching arrow typeset on the canvas (→ U+2192, ← U+2190,
 and `a \mapsto b` compile natively with the same arrows.
 The final step pins the script-block arrow-entry report: `a^2`, `→` out,
 then `←` steps INTO the superscript (model untouched, one socket box) and
-`3` fills `a^{23}`; `←`×3 releases before the block with the socket shed
-(`x` → `xa^{23}`); `→` over the block stays one whole-block step
-(`q` → `xa^{23}q`); msub enters the same way (`b_3` ← `4` → `b_{34}`);
-an empty argument re-arms as its box (`e^{}` ← `f` → `e^f`); and a plain
-neighbour token still gets a plain block-step (`12` ← `x` → `1x2`).
-77 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+`3` fills `a^{23}`; `←`×3 parks at the base's end (`x` grows the base →
+`{ax}^{23}`) and `←`×3 more walks the base and releases before the block
+with the socket shed (`y` → `y{ax}^{23}`); `→` over the block stays one
+whole-block step (`q` → `y{ax}^{23}q`); msub enters the same way
+(`b_3` ← `4` → `b_{34}`); an empty argument re-arms as its box
+(`e^{}` ← `f` → `e^f`); and a plain neighbour token still gets a plain
+block-step (`12` ← `x` → `1x2`).
+The final step pins the left-arrow-skips-the-base report: `a^2` then
+`←` (`a^{|2}`, still locked) then `←` parks *between* the base and the
+script (`a|^{2}`, model untouched, one socket box) — never at the
+block's front — and `x` grows the base (`{ax}^2`); `→` from the park
+roundtrips into the argument's start (`z` → `{ax}^{z2}`); `b_3` `←` `←`
+parks the same way for subscripts (`4` → `{b4}_3`). (Steps 46, 59 and
+77 exercise the same chain: step 46 walks a locked `d^4` out through
+the base park and back in on `→`; step 59's radical walk now grows the
+base inside `\sqrt{b^2}`; step 77 chains the entered-slot walk onto the
+base's end.)
+78 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

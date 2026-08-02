@@ -1447,6 +1447,11 @@
                 // FRACTION NAVIGATION: ← past the denominator's START climbs
                 // into the numerator's END instead of leaving the fraction.
                 if (j < 0 && script.kind === '/' && jumpToFracNumerator()) { return; }
+                // SCRIPT NAVIGATION: ← past a script's START steps out to
+                // the base's END — parked between base and script (a|^{2}),
+                // never skipping the base to the block's front (|a^{2}) —
+                // the exact mirror of the fraction numerator climb.
+                if (j < 0 && (script.kind === '^' || script.kind === '_') && jumpToScriptBase()) { return; }
                 exitScript();
                 if (j < 0) { // …before the block, if stepping out on the left
                     caret.gap = Math.max(0, modelBlocks - 1);
@@ -2290,6 +2295,25 @@
             }
             return {path: PP.concat([2, j, 2]), arr: structure[2][j][2]};
         }
+        if (structure[0] === 'msup' || structure[0] === 'msub' || structure[0] === 'msubsup') {
+            // SCRIPT blocks: the base and the script argument(s) are
+            // content-child siblings. ← from a script's START steps out to
+            // the PREVIOUS content child's END — for the first script that
+            // is the base, parking the caret between base and script
+            // (a^{|2} ← → a|^{2}, the "left arrow skips the base" report);
+            // → from a content child's END enters the NEXT content child's
+            // START — the same roundtrip the fraction's numerator ↔
+            // denominator hop makes (a|^{2} → → a^{|2}). msubsup chains all
+            // three: base ⇄ sub ⇄ sup. Past the base or past the last
+            // script → null: the block's edges belong to the peel/release.
+            var jj = k + dir;
+            if (jj < 0 || jj >= structure[2].length) { return null; }
+            var sib = structure[2][jj];
+            if (!(Array.isArray(sib) && sib[0] === 'mrow' && Array.isArray(sib[2]))) {
+                structure[2][jj] = ['mrow', {}, [sib]]; // wrap the bare base
+            }
+            return {path: PP.concat([2, jj, 2]), arr: structure[2][jj][2]};
+        }
         if (structure[0] === 'mtr' || structure[0] === 'mlabeledtr') {
             // MATRIX cells: the same-row neighbour, else the row above's
             // LAST cell (for ←) / the row below's FIRST cell (for →) —
@@ -2368,6 +2392,44 @@
         slotFocus.caretIdx = slotTokenIndices(numArr).length; // the numerator's END
         bookmarkSlot(itemsF, numArr);
         rebuildSlate(itemsF); // re-register the model
+        refreshCaret();
+        return true;
+    }
+
+    // ← past the start of a LOCKED script's slot (moveCaret's j < 0 edge
+    // for ^ and _): park the caret between the base and the script — the
+    // base's END as a slot focus — instead of letting exitScript drop it
+    // at the block's front (the "left arrow inside superscript skips the
+    // base character" report). Same hand-off shape as the fraction's
+    // numerator jump: the bare base is wrapped into the tex-less mrow slot
+    // convention, and its trailing box gives the parked caret a socket.
+    // Typing there extends the base (a|^{2} then x → ax^{2}); one more ←
+    // walks the base and a final ← releases before the block through the
+    // usual peel.
+    function jumpToScriptBase() {
+        var itemsB = topItems();
+        var node = itemsB[itemsB.length - 1]; // a locked block is the last one
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return false; }
+            itemsB[itemsB.length - 1] = node;
+        }
+        if (!Array.isArray(node) || !Array.isArray(node[2])
+            || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) {
+            return false;
+        }
+        cancelScript(); // the slot focus takes over from the lock
+        if (!(Array.isArray(node[2][0]) && node[2][0][0] === 'mrow'
+            && Array.isArray(node[2][0][2]))) {
+            node[2][0] = ['mrow', {}, [node[2][0]]]; // wrap the bare base
+        }
+        var baseArr = node[2][0][2];
+        ensureSlotBox(baseArr); // the parked caret's socket
+        slotFocus.active = true;
+        slotFocus.top = itemsB.length - 1;
+        slotFocus.path = [2, 0, 2];
+        slotFocus.caretIdx = slotTokenIndices(baseArr).length; // the base's END
+        bookmarkSlot(itemsB, baseArr);
+        rebuildSlate(itemsB); // re-register the model
         refreshCaret();
         return true;
     }

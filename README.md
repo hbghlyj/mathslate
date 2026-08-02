@@ -47,7 +47,12 @@ to its bare base. Once the caret is out, `←` stepping back onto a script
 block (`msup`/`msub`/`msubsup`) peels **into** its script argument —
 parked after the last script token (`a^2` `→` `←` → `a^{2|}`, so typing
 `3` gives `a^{23}`) — instead of skipping the whole block to before the
-base; further `←` walks the argument and one final `←` releases the
+base; further `←` walks the argument, then steps **out onto the base's
+end** — `a^{|2}` `←` parks at `a|^{2}` (between the base and the
+script — typing `x` grows the base: `{ax}^2`), and `→` from there hops
+back into the argument's start, the same roundtrip the fraction's
+numerator ↔ denominator navigation makes (`msubsup` chains all three:
+base ⇄ sub ⇄ sup); after walking the base, one more `←` releases the
 caret before the block. `→` over a script block stays a single
 whole-block step. The `\` placeholder is a little three-state box of its own:
 

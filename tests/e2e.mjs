@@ -693,22 +693,24 @@ console.log('    edge-step let it out; "c" continues after →', JSON.stringify(
 await page.keyboard.type('d^4');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}cd^4', null, { timeout: 15000 });
 await page.keyboard.press('ArrowLeft');
-await page.keyboard.press('ArrowLeft'); // past the left edge: exits before the block
+await page.keyboard.press('ArrowLeft'); // past the script's left edge: parks beside the base (d|^{4})
 await page.waitForFunction(() =>
     !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'), null, { timeout: 10000 });
-await page.waitForFunction(() => {
-    const c = document.querySelector('.mathslate-caret');
-    return !!c && c.style.position === 'absolute';
-}, null, { timeout: 10000 });
-console.log('    left edge-step exited; caret anchored before the block ✓');
-await page.keyboard.press('ArrowRight');
-await page.waitForFunction(() => {
-    const c = document.querySelector('.mathslate-caret');
-    return !!c && !c.style.position;
-}, null, { timeout: 10000 });
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // the parked caret's socket between base and script
+await page.keyboard.type('w'); // extends the base — |a^{2} was the report's wrong jump
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}c{dw}^4', null, { timeout: 15000 });
+console.log('    left edge-step parked at the base end; "w" grew the base →', JSON.stringify(await texNS()));
+await page.keyboard.press('ArrowRight'); // roundtrip: back into the script's start
+await page.keyboard.type('z');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}c{dw}^{z4}', null, { timeout: 15000 });
+console.log('    → roundtripped into the script start; "z" filled there →', JSON.stringify(await texNS()));
+await page.keyboard.press('ArrowRight'); // walks to the script's end…
+await page.keyboard.press('ArrowRight'); // …and one more steps out right, after the block
 await page.keyboard.type('e');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}cd^4e', null, { timeout: 15000 });
-console.log('    back at the end →', JSON.stringify(await texNS()));
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'a^{2b3}c{dw}^{z4}e', null, { timeout: 15000 });
+console.log('    rightward walk exits after the block; "e" at the slate end →', JSON.stringify(await texNS()));
 
 console.log('47. Enter lets the cursor out of a script block too');
 await page.click('#btn-clear-slate');
@@ -1129,15 +1131,17 @@ await page.waitForFunction(() =>
 await page.keyboard.type('2');
 await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{b^2}', null, { timeout: 20000 });
 await page.keyboard.press('ArrowLeft'); // caret before the 2, inside the argument
-await page.keyboard.press('ArrowLeft'); // past the argument's left edge: peel into the radicand, before b^2
-await page.keyboard.type('w');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{wb^2}', null, { timeout: 20000 });
-console.log('    ←×2 peeled leftwards into the radicand; "w" landed before b^2 →', JSON.stringify(await texNS()), '✓');
-await page.keyboard.press('ArrowLeft'); // caret before the w, still in the radicand
+await page.keyboard.press('ArrowLeft'); // past the argument's left edge: park at the base's end (b|^{2})
+await page.keyboard.type('w'); // extends the base, inside the radicand
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === '\\sqrt{{bw}^2}', null, { timeout: 20000 });
+console.log('    ←×2 parked at the script base\'s end inside the radicand; "w" grew the base →', JSON.stringify(await texNS()), '✓');
+await page.keyboard.press('ArrowLeft'); // between b and w in the base
+await page.keyboard.press('ArrowLeft'); // before the base, still inside the block
+await page.keyboard.press('ArrowLeft'); // peel: parked before bw^2, back in the radicand
 await page.keyboard.press('ArrowLeft'); // past the radicand's left edge: out to the slate, before the block
 await page.keyboard.type('v');
-await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'v\\sqrt{wb^2}', null, { timeout: 20000 });
-console.log('    ←×2 more parked before the block at top level →', JSON.stringify(await texNS()), '✓');
+await page.waitForFunction(() => document.getElementById('current-tex').value.replace(/\s+/g, '') === 'v\\sqrt{{bw}^2}', null, { timeout: 20000 });
+console.log('    through the base, peeled into the radicand and out before the block →', JSON.stringify(await texNS()), '✓');
 
 console.log('60. launch focus: the workspace owns the caret at boot; first keystrokes land on the slate');
 await page.reload({ waitUntil: 'domcontentloaded' });
@@ -2499,7 +2503,19 @@ await page.waitForFunction(() =>
 await page.keyboard.type('3');
 await texIs68('a^{23}'); // the fill lands right after the 2
 console.log('    report flow: a^2 → ← types 3 INSIDE → a^{23} ✓');
-// more ← walks the slot (before the 2), and a final ← releases before the block
+// more ← walks the slot; at its start the next ← steps OUT onto the
+// base's end (a|^{23} — parked between base and script, not past the
+// base) with its own socket, and typing extends the base there
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft'); // = the base's end
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('x');
+await texIs68('{ax}^{23}');
+console.log('    <<< through the slot, parked at the base end, x grew the base → {ax}^{23} ✓');
+// the walk continues through the base, and a final ← releases before the block
 await page.keyboard.press('ArrowLeft');
 await page.keyboard.press('ArrowLeft');
 await page.keyboard.press('ArrowLeft');
@@ -2507,14 +2523,14 @@ await page.waitForTimeout(700);
 await page.waitForFunction(() =>
     document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
     null, { timeout: 15000 }); // the socket dies with the exit
-await page.keyboard.type('x');
-await texIs68('xa^{23}');
-console.log('    <<< through the slot, released before the block, x landed before ✓');
+await page.keyboard.type('y');
+await texIs68('y{ax}^{23}');
+console.log('    through the base and released before the block, y landed before ✓');
 // a → press from the free caret before the block steps over it whole
 await page.keyboard.press('ArrowRight');
 await page.waitForTimeout(500);
 await page.keyboard.type('q');
-await texIs68('xa^{23}q');
+await texIs68('y{ax}^{23}q');
 console.log('    → over the block stays a single whole-block step ✓');
 
 // msub gets the same entry
@@ -2562,6 +2578,45 @@ await page.waitForFunction(() =>
     document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
     null, { timeout: 15000 });
 console.log('    plain-token neighbour: 12 ← x → 1x2 (no slot entry, no boxes) ✓');
+await page.click('#btn-clear-slate');
+
+console.log('78. ← past a script\'s start parks between base and script (the "left arrow skips the base" report)');
+// the report, verbatim: type a^2, one ← to a^{|2}, and the next ← must
+// park at a|^{2} — not skip the base to |a^{2}
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowLeft'); // a^{|2}, still locked
+await page.waitForFunction(() =>
+    document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft'); // the report's step: out to a|^{2}
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active')
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await texIs68('a^2'); // the model is untouched by the park
+await page.keyboard.type('x');
+await texIs68('{ax}^2'); // the base grows at the park point — never |xa^2
+console.log('    report flow: a^2 ← ← parks between base and script; x grew the base → {ax}^2 ✓');
+// → from there roundtrips into the script's start, mirroring the fraction hop
+await page.keyboard.press('ArrowRight');
+await page.keyboard.type('z');
+await texIs68('{ax}^{z2}');
+console.log('    → roundtripped into the argument start; z filled → {ax}^{z2} ✓');
+// msub parks the same way
+await freshSlate68();
+await page.keyboard.type('b_3');
+await texIs68('b_3');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active')
+        && document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('4');
+await texIs68('{b4}_3');
+console.log('    msub: b_3 ← ← parked at b|_{3}; 4 grew the base → {b4}_3 ✓');
 await page.click('#btn-clear-slate');
 
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
