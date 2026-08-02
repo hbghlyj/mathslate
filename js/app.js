@@ -1379,6 +1379,39 @@
         }, 300, function () { /* cosmetic failure is fine */ });
     }
 
+    // Where ← lands when it steps ONTO a script block from the right: the
+    // block's RIGHTMOST script argument as a slot {path, arr} (msup/msub →
+    // the script, msubsup → the superscript), or null when block bi is not
+    // a script block. The typed-lock convention keeps slot content in a
+    // tex-less mrow; a bare argument — an empty '[]' placeholder or a bare
+    // token from a TeX-tab-compiled script — is wrapped into that
+    // convention on the fly: the mrow grouping is invisible to canvas and
+    // TeX while the caret gains its socket, the same wrap fracSiblingSlot
+    // gives a bare fraction numerator. Top-level mrow tex wrappers (whole
+    // TeX-tab inputs) are not descended: their tex-string serialization
+    // owns their content, so they stay whole-block steps.
+    function scriptSlotEntry(items, bi) {
+        var node = items[bi];
+        if (typeof node === 'string') {
+            try { node = JSON.parse(node); } catch (e) { return null; }
+            items[bi] = node; // make the wrap reach the rebuild
+        }
+        if (!Array.isArray(node) || !Array.isArray(node[2])
+            || (node[0] !== 'msup' && node[0] !== 'msub' && node[0] !== 'msubsup')) { return null; }
+        var kids = node[2];
+        var ci = kids.length - 1;
+        if (ci < 1) { return null; } // a base alone has nothing to enter
+        var content = kids[ci];
+        if (typeof content === 'string') { // bare token or '[]' → slot convention
+            kids[ci] = ['mrow', {}, [content]];
+            return { path: [2, ci, 2], arr: kids[ci][2] };
+        }
+        if (Array.isArray(content) && content[0] === 'mrow' && Array.isArray(content[2])) {
+            return { path: [2, ci, 2], arr: content[2] };
+        }
+        return null; // a foreign wrapper owns the argument: not a slot
+    }
+
     // < and > (the UI buttons and ←/→): step the fake caret one position.
     // A real selection collapses to the end first. Inside a locked script
     // block the caret steps between the block's tokens; only a step PAST an
@@ -1424,6 +1457,30 @@
             caret.scriptGap = j;
             refreshCaret();
             return;
+        }
+        // ← stepping ONTO a script block (msup/msub/msubsup) from the right
+        // peels INTO its script slot — parked at the slot's END — instead of
+        // skipping the whole block to before its base (the "a^2, →, then ←
+        // jumps to the left of a" report). The slot-focus machinery takes
+        // over from there: more ← walks the slot's tokens, typing lands
+        // inside, and a final ← at the slot's start releases the caret to
+        // before the block through the usual peel. → over a script block
+        // stays a whole-block step: the interior has no left-edge landing
+        // spot (the base IS the block, the script sits up at the right).
+        if (dir < 0 && caret.gap > 0 && caret.gap <= modelBlocks) {
+            var entryItems = topItems();
+            var entry = scriptSlotEntry(entryItems, caret.gap - 1);
+            if (entry) {
+                slotFocus.active = true;
+                slotFocus.top = caret.gap - 1;
+                slotFocus.path = entry.path;
+                slotFocus.caretIdx = slotTokenIndices(entry.arr).length; // the slot's END
+                ensureSlotBox(entry.arr); // the typing socket / caret home
+                bookmarkSlot(entryItems, entry.arr);
+                rebuildSlate(entryItems);
+                refreshCaret();
+                return;
+            }
         }
         caret.gap = Math.max(0, Math.min(caret.gap + dir, modelBlocks));
         refreshCaret();

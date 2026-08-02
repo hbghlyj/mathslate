@@ -189,7 +189,14 @@ with the matching arrow typeset on the canvas (→ U+2192, ← U+2190,
 ↦ U+21A6); the pre-existing `\leq`/`\geq` tools click-fill to
 `a\leq b` / `a\geq b` with ≤/≥ glyphs; and the typed TeX `a \gets b`
 and `a \mapsto b` compile natively with the same arrows.
-76 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+The final step pins the script-block arrow-entry report: `a^2`, `→` out,
+then `←` steps INTO the superscript (model untouched, one socket box) and
+`3` fills `a^{23}`; `←`×3 releases before the block with the socket shed
+(`x` → `xa^{23}`); `→` over the block stays one whole-block step
+(`q` → `xa^{23}q`); msub enters the same way (`b_3` ← `4` → `b_{34}`);
+an empty argument re-arms as its box (`e^{}` ← `f` → `e^f`); and a plain
+neighbour token still gets a plain block-step (`12` ← `x` → `1x2`).
+77 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

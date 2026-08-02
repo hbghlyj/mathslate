@@ -43,7 +43,13 @@ still-empty block (`e^` `→` `x` → `e^{}x`), `←` parks it before the
 block (`e^` `←` `x` → `xe^{}`). `←`/`→` (and the `<`/`>` buttons) step the
 caret **between the block's tokens** while it is locked; `Backspace`
 inside deletes the block's last token and collapses an emptied block back
-to its bare base. The `\` placeholder is a little three-state box of its own:
+to its bare base. Once the caret is out, `←` stepping back onto a script
+block (`msup`/`msub`/`msubsup`) peels **into** its script argument —
+parked after the last script token (`a^2` `→` `←` → `a^{2|}`, so typing
+`3` gives `a^{23}`) — instead of skipping the whole block to before the
+base; further `←` walks the argument and one final `←` releases the
+caret before the block. `→` over a script block stays a single
+whole-block step. The `\` placeholder is a little three-state box of its own:
 
 1. **Activation** — typing `\` inserts a placeholder container showing a
    monospace `\` with the cursor locked inside it: arrow keys (and

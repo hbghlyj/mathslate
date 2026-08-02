@@ -2478,6 +2478,92 @@ for (const [src, want, glyph] of [
 console.log('    typed TeX a \\gets b / a \\mapsto b compiled with ←/↦ ✓');
 await page.click('#btn-clear-slate');
 
+console.log('77. <- stepping onto a script block enters its script slot (the "a^2 arrow skip" report)');
+// the report: a^2, → to exit, ← must land INSIDE the superscript after
+// the 2, not jump to before the a
+await freshSlate68();
+await page.keyboard.type('a^2');
+await texIs68('a^2');
+await page.keyboard.press('ArrowRight'); // exit the superscript
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft'); // the report's failing step
+// the model must be untouched…
+await page.waitForTimeout(700);
+await texIs68('a^2');
+// …while one socket box appeared (the caret's home inside the superscript)
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('3');
+await texIs68('a^{23}'); // the fill lands right after the 2
+console.log('    report flow: a^2 → ← types 3 INSIDE → a^{23} ✓');
+// more ← walks the slot (before the 2), and a final ← releases before the block
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(700);
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 }); // the socket dies with the exit
+await page.keyboard.type('x');
+await texIs68('xa^{23}');
+console.log('    <<< through the slot, released before the block, x landed before ✓');
+// a → press from the free caret before the block steps over it whole
+await page.keyboard.press('ArrowRight');
+await page.waitForTimeout(500);
+await page.keyboard.type('q');
+await texIs68('xa^{23}q');
+console.log('    → over the block stays a single whole-block step ✓');
+
+// msub gets the same entry
+await freshSlate68();
+await page.keyboard.type('b_3');
+await texIs68('b_3');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await page.keyboard.type('4');
+await texIs68('b_{34}');
+console.log('    msub: b_3 → ← types 4 inside → b_{34} ✓');
+
+// an empty argument re-arms as its box: e^ exit, ← enters, f fills
+await freshSlate68();
+await page.keyboard.type('e^');
+await texIs68('e^{}');
+await page.keyboard.press('ArrowRight');
+await page.waitForFunction(() =>
+    !document.getElementById('mathslate-editor').classList.contains('mathslate-script-active'),
+    null, { timeout: 10000 });
+await page.keyboard.press('ArrowLeft');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 });
+await texIs68('e^{}'); // tex unchanged by the entry
+await page.keyboard.type('f');
+await texIs68('e^f');
+console.log('    empty argument: e^{} ← enters the box, f fills → e^f ✓');
+
+// plain neighbours are unaffected: a token left of the caret is still a plain block-step
+await freshSlate68();
+await page.keyboard.type('12');
+await texIs68('12');
+await page.keyboard.press('ArrowLeft');
+await page.waitForTimeout(500);
+await page.keyboard.type('x');
+await texIs68('1x2');
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+console.log('    plain-token neighbour: 12 ← x → 1x2 (no slot entry, no boxes) ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {
