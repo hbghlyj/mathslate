@@ -103,7 +103,7 @@ M.tinymce_mathslate.configJSON = [
             ["mi", {"tex":["\\hbar"]},"\u210F"]
         ]
     },
-    {"label":"<span title='Latin alphabet'><math><mi>A</mi><mi>b</mi><mi>3</mi></math></span>",
+    {"label":"<span title='Latin alphabet'><math><mi>A</mi><mi>b</mi><mn>3</mn></math></span>",
         "tools":[
             ["mi",{},"a"],
             ["mi",{},"b"],
