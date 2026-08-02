@@ -263,7 +263,16 @@ last cell (`X` → `…&dX\end{cases}`); `\begin{aligned}a&=b\\c&=d
 and `\begin{array}{ccc}…\end{array}` stays centered with the column
 spec in its TeX; the dialog remembers the environment choice too (reset
 to the legacy bare default at the end of the step).
-83 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
+Step 84 is step 81's exact mirror for the right arrow: left of a
+filled 2×2 `\\matrix{1&1\\\\1&1}` (reached by walking the row-major
+chain all the way out), `→` steps INTO the top-left cell parked at
+its start — one socket, the model untouched — so a fill lands at the
+cell's start (`2` → `\\matrix{21&1\\\\1&1}`); the walk then continues
+forwards through every cell and releases after the grid (`x` →
+`\\matrix{21&1\\\\1&1}x`); an EMPTY top-left cell parks in its box,
+the fill consuming the blank (`\\matrix{&1\\\\1&1}` `→` `2` →
+`\\matrix{2&1\\\\1&1}`).
+84 numbered steps, green under MathJax 4.1 (CHTML) with no console/page errors.
 
     cd tests
     npm install            # installs playwright-core + @sparticuz/chromium

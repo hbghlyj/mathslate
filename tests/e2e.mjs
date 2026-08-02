@@ -3096,6 +3096,71 @@ await texIs68('\\matrix{&\\\\&}');
 console.log('    env choice remembered (array back in the dialog), reset to the legacy bare default ✓');
 await page.click('#btn-clear-slate');
 
+console.log('84. → stepping onto a matrix block enters its top-left cell (the "symmetrical right arrow" request)');
+// the request: \\matrix{1&1\\\\1&1} with the caret immediately LEFT
+// of the matrix block — → must step INTO the top-left cell parked at
+// its start, not skip the grid whole: the exact mirror of step 81's ←
+// entry. The row-major walk then runs forwards cell by cell until the
+// caret releases after the matrix
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 2
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 3
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 4
+await page.keyboard.type('1');
+await texIs68('\\matrix{1&1\\\\1&1}');
+// walk all the way out to the left first (step 81's release)
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.press('ArrowRight'); // the request's step
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 1,
+    null, { timeout: 15000 }); // one socket: the caret's home inside cell 1
+await texIs68('\\matrix{1&1\\\\1&1}'); // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{21&1\\\\1&1}'); // the fill lands at the cell's START
+console.log('    request flow: filled 2×2, left-of-matrix → entered cell 1; 2 filled → \\matrix{21&1\\\\1&1} ✓');
+// …and the row-major walk continues forwards cell by cell until the
+// caret releases after the matrix
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(120); }
+await page.waitForFunction(() =>
+    document.querySelectorAll('#mathslate-editor #canvas .mjx-c25FB').length === 0,
+    null, { timeout: 15000 });
+await page.keyboard.type('x');
+await texIs68('\\matrix{21&1\\\\1&1}x');
+console.log('    the walk continues forwards through every cell; x landed after the matrix ✓');
+
+// an EMPTY top-left cell behaves like step 81's empty bottom-right one:
+// the entry parks in its box and the fill lands, consuming the blank
+await freshSlate68();
+await clickMatrixTool71();
+await page.keyboard.press('Enter');
+await texIs68('\\matrix{&\\\\&}');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 2
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 3
+await page.keyboard.type('1');
+await page.keyboard.press('Tab'); await page.waitForTimeout(300); // cell 4
+await page.keyboard.type('1');
+await texIs68('\\matrix{&1\\\\1&1}');
+for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(120); }
+await page.waitForTimeout(300);
+await texIs68('\\matrix{&1\\\\1&1}'); // the walk out does not touch the model
+await page.keyboard.press('ArrowRight');   // back onto the matrix from the left
+await page.waitForTimeout(300);
+await texIs68('\\matrix{&1\\\\1&1}');      // the entry does not touch the model
+await page.keyboard.type('2');
+await texIs68('\\matrix{2&1\\\\1&1}');     // the blank consumed, 2 in the cell
+console.log('    empty top-left cell: → parked in its box, 2 filled → \\matrix{2&1\\\\1&1} ✓');
+await page.click('#btn-clear-slate');
+
 // screenshot is only diagnostic; the MathJax webfont CORS block can stall
 // Chromium's font-wait, so cap it
 try {

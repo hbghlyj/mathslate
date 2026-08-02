@@ -256,7 +256,14 @@ parked at the cell's end, the model untouched, one socket as the
 caret's home (an empty cell parks in its box and the fill lands,
 consuming the blank) — instead of skipping the grid whole to before
 its left edge, the same entry script blocks make; the row-major walk
-then continues backwards cell by cell from there. Multi-token cells
+then continues backwards cell by cell from there. `→` stepping onto
+the matrix from the slate is the exact mirror: it peels **into** the
+top-left cell — parked at the cell's *start* (the entry convention
+the walk's own `→` cell hops already follow), the model untouched,
+one socket as the caret's home, an empty cell filling through its
+box — so a fill lands at the cell's start and the walk then
+continues forwards cell by cell until the caret releases after the
+grid. Multi-token cells
 (`19`, `a/b`) serialize in full: each cell wraps its content in an
 invisible `mrow`, so the separators stay the `mtd`s' own `&`/`\\`
 overrides while cell content keeps reading out token by token.

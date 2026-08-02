@@ -1500,23 +1500,26 @@
         return { path: [2, 1, 2], arr: node[2][1][2] };
     }
 
-    // Where ← lands when it steps ONTO a matrix block from the right: the
-    // BOTTOM-RIGHT cell's live slot as {path, arr} — the caret parked at
-    // the cell's END — or null when block bi holds no mtable (the
-    // "\matrix{…} then ← skips the whole block" report). The matrix tool
-    // nests its mtable inside an mrow that OWNS the \matrix{…} TeX
-    // template, so — unlike scriptSlotEntry's whole-TeX wrappers — the
-    // wrapper chain IS descended: the template's single slot is the whole
-    // table while the cells stay caret-addressable through their own
-    // cell templates, the same shape the click-fill walk focuses. Only
-    // mrows are descended (bare-group wrappers and the tool's own", so a
-    // mrows are descended (bare-group wrappers and the tool's own), so
-    // a fraction whose numerator happens to hold a matrix keeps its
-    // whole-block step; the descent is document order, so the OUTERMOST
-    // mrow chain via mtrCellSlot, exactly like fracSiblingSlot's
-    // row-major hops — the walk machinery takes over from there, so more
-    // ← walks the grid backwards and → roundtrips.
-    function matrixSlotEntry(items, bi) {
+    // Where the arrow entries land when the free caret steps ONTO a
+    // matrix block: ← from the right enters the BOTTOM-RIGHT cell (the
+    // "\matrix{…} then ← skips the whole block" report), → from the
+    // left the TOP-LEFT cell (the symmetrical right-arrow report) —
+    // each returned as a live slot {path, arr}; the caller parks the
+    // caret at the slot's END for ← and its START for →, the entry
+    // convention the fracSiblingSlot hops already follow, so the
+    // row-major walk they traverse backwards runs forwards unchanged.
+    // The matrix tool nests its mtable inside an mrow that OWNS the
+    // \matrix{…} TeX template, so — unlike scriptSlotEntry's
+    // whole-TeX wrappers — the wrapper chain IS descended: the
+    // template's single slot is the whole table while the cells stay
+    // caret-addressable through their own cell templates, the same
+    // shape the click-fill walk focuses. Only mrows are descended
+    // (bare-group wrappers and the tool's own), so a fraction whose
+    // numerator happens to hold a matrix keeps its whole-block step;
+    // the descent hunts the OUTERMOST mtable, reached cell-first via
+    // mtrCellSlot exactly like fracSiblingSlot's row-major hops — the
+    // walk machinery takes over from there.
+    function matrixSlotEntry(items, bi, fromLeft) {
         var node = items[bi];
         if (typeof node === 'string') {
             try { node = JSON.parse(node); } catch (e) { return null; }
@@ -1533,12 +1536,12 @@
         })(node, []);
         if (!found) { return null; }
         var table = found.node;
-        var ri = table[2].length - 1;
+        var ri = fromLeft ? 0 : table[2].length - 1;
         if (ri < 0) { return null; }
         var row = table[2][ri];
         if (!Array.isArray(row) || (row[0] !== 'mtr' && row[0] !== 'mlabeledtr')
             || !Array.isArray(row[2]) || !row[2].length) { return null; }
-        var ci = row[2].length - 1;
+        var ci = fromLeft ? 0 : row[2].length - 1;
         if (!Array.isArray(row[2][ci])) { return null; }
         return mtrCellSlot(row[2][ci], found.path.concat([2, ri, 2, ci]));
     }
@@ -1641,10 +1644,29 @@
         // the structure whole). Typing there extends the base, ← walks
         // back out through the base, and the next → roundtrips into the
         // script slot's start through fracSiblingSlot's base⇄script
-        // chain — the same positions the ← walk visits, in reverse.
+        // chain — the same positions the ← walk visits, in reverse. →
+        // stepping onto a MATRIX is the same peel: it enters the
+        // TOP-LEFT cell parked at the cell's START — the exact mirror
+        // of the ← entry into the bottom-right cell's end (the
+        // "symmetrical right arrow into matrix" report) — so the
+        // row-major cell walk ← traverses backwards here runs forwards
+        // cell by cell until the caret releases after the grid, never
+        // skipping the matrix whole.
         if (dir > 0 && !armedBox && caret.gap < modelBlocks) {
             var itemsR = topItems();
             if (parkAtScriptBase(itemsR, caret.gap)) { return; }
+            var entryR = matrixSlotEntry(itemsR, caret.gap, true);
+            if (entryR) {
+                slotFocus.active = true;
+                slotFocus.top = caret.gap;
+                slotFocus.path = entryR.path;
+                slotFocus.caretIdx = 0; // the cell's START (the ← entry parks at its END)
+                ensureSlotBox(entryR.arr);
+                bookmarkSlot(itemsR, entryR.arr);
+                rebuildSlate(itemsR);
+                refreshCaret();
+                return;
+            }
         }
         caret.gap = Math.max(0, Math.min(caret.gap + dir, modelBlocks));
         refreshCaret();
