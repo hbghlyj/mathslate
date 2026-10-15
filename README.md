@@ -405,8 +405,8 @@ four core modules essentially verbatim and adapts around them:
   call becomes an inline v4 options object set before the bundle loads
   (`tex.inlineMath`/`displayMath` with the same `\( \)` / `\[ \]`
   delimiters + `processEscapes`, `options.skipHtmlTags` extended with
-  `annotation`/`annotation-xml`, `chtml.displayAlign:'left'`,
-  `displayIndent:'0'`, `chtml.linebreaks.inline:false` (v4 breaks inline
+  `annotation`/`annotation-xml`,
+  `chtml.linebreaks.inline:false` (v4 breaks inline
   math at operators by default; v2 never did — with it on, the
   fixed-width `=⊅` toolbox tab label wrapped a glyph below the tab
   strip), `startup.typeset:false`). Webfonts load from the

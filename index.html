@@ -29,9 +29,7 @@
 <!--
  * MathJax 4 configuration (must be set BEFORE the component loads).
  * The Mathslate core expects the old MathJax 2 defaults: \( \) and \[ \]
- * delimiters, no auto page typeset (the v2 shim drives all typesetting),
- * display math left-aligned like the MathJax 2.7 layout this UI was
- * sized for.
+ * delimiters, no auto page typeset (the v2 shim drives all typesetting).
 -->
 <script>
     window.MathJax = {
@@ -58,8 +56,6 @@
             }
         },
         chtml: {
-            displayAlign: 'left',
-            displayIndent: '0',
             // MathJax 4 line-breaks INLINE math at operator boundaries by
             // default (a v4 option upstream of this editor's MathJax 2
             // heritage); the fixed-width toolbox tab labels then wrap —
